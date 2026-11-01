@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/GraEvatMiddleware.Api/GraEvatMiddleware.Api.csproj" />
+    <Project Path="src/GraEvatMiddleware.Application/GraEvatMiddleware.Application.csproj" />
+    <Project Path="src/GraEvatMiddleware.Domain/GraEvatMiddleware.Domain.csproj" />
+    <Project Path="src/GraEvatMiddleware.GraClient/GraEvatMiddleware.GraClient.csproj" />
+    <Project Path="src/GraEvatMiddleware.Infrastructure/GraEvatMiddleware.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/GraEvatMiddleware.ArchitectureTests/GraEvatMiddleware.ArchitectureTests.csproj" />
+    <Project Path="tests/GraEvatMiddleware.IntegrationTests/GraEvatMiddleware.IntegrationTests.csproj" />
+    <Project Path="tests/GraEvatMiddleware.UnitTests/GraEvatMiddleware.UnitTests.csproj" />
+  </Folder>
+</Solution>

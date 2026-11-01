@@ -1,0 +1,6 @@
+@GraEvatMiddleware_HostAddress = https://localhost:7128
+
+GET {{GraEvatMiddleware_HostAddress}}/api/v1/health/live
+Accept: application/json
+
+###
