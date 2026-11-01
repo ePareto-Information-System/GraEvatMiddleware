@@ -7,4 +7,6 @@ public sealed class GraApiOptions
     public string BaseUrl { get; init; } = string.Empty;
 
     public int RequestTimeoutSeconds { get; init; } = 30;
+
+    public bool Enabled { get; init; }
 }
