@@ -38,7 +38,7 @@ Create the `gra_evat` database and `gra_evat_app` login on the local PostgreSQL 
 
 ```powershell
 dotnet user-secrets init --project src/GraEvatMiddleware.Api
-dotnet user-secrets set "ConnectionStrings:Database" "Host=localhost;Port=5432;Database=gra_evat;Username=gra_evat_app;Password=<password>" --project src/GraEvatMiddleware.Api
+dotnet user-secrets set "ConnectionStrings:Database" "Host=localhost;Port=5434;Database=gra_evat;Username=gra_evat_app;Password=<password>" --project src/GraEvatMiddleware.Api
 dotnet user-secrets set "Security:AdminKey" "<admin-key>" --project src/GraEvatMiddleware.Api
 dotnet user-secrets set "Security:ApiKeyPepper" "<random-pepper>" --project src/GraEvatMiddleware.Api
 ```
@@ -49,6 +49,78 @@ Apply the database migration and start the API:
 dotnet tool run dotnet-ef database update --project src/GraEvatMiddleware.Infrastructure --startup-project src/GraEvatMiddleware.Api
 dotnet run --project src/GraEvatMiddleware.Api
 ```
+
+When the API is started from Visual Studio in the Development environment, the browser opens the interactive Swagger UI automatically. If it does not, open the `/swagger` path shown against the API URL in the Visual Studio output, for example `http://localhost:5189/swagger` for the HTTP profile.
+
+## Test the local workflow in Swagger
+
+Keep `GraApi:Enabled` set to `false` while using this workflow. This saves the local transaction but prevents any request from being sent to GRA.
+
+1. Expand `GET /api/v1/health/live`, select **Try it out**, then select **Execute**. A working API returns HTTP `200` and `status: healthy`.
+2. Select **Authorize**. Enter the value of your `Security:AdminKey` user secret in `AdminKey`; enter the value only, without an `X-Admin-Key:` prefix.
+3. Expand `POST /api/v1/admin/tenants`, select **Try it out**, and register a local tenant with the body below. Use a new `slug` and `taxpayerReference` if you repeat this test.
+
+```json
+{
+  "name": "Local Test Company",
+  "slug": "local-test-company-001",
+  "taxpayerReference": "C000000000001",
+  "graSecurityKeySecretName": "local-gra-staging-key"
+}
+```
+
+The secret name is only a reference label while GRA integration is disabled. The response contains `credential.apiKey`; copy it immediately because the application stores only its hash and cannot display that key again.
+
+4. Select **Authorize** again and enter the returned `credential.apiKey` in `TenantApiKey`; enter the key value only, without an `X-API-Key:` prefix.
+5. Expand `POST /api/v1/invoices`, select **Try it out**, set `Idempotency-Key` to a unique value such as `local-invoice-0001`, and submit the controlled invoice below.
+
+```json
+{
+  "invoiceNumber": "LOCAL-0001",
+  "currency": "GHS",
+  "exchangeRate": 1,
+  "calculationType": "INCLUSIVE",
+  "transactionDate": "2026-11-03",
+  "totalVat": 0,
+  "totalLevy": 0,
+  "totalAmount": 100,
+  "businessPartnerName": "Local Test Customer",
+  "businessPartnerTin": "C000000000002",
+  "saleType": "NORMAL",
+  "discountType": null,
+  "discountAmount": 0,
+  "groupReferenceId": null,
+  "items": [
+    {
+      "itemCode": "ITEM-001",
+      "itemCategory": "GENERAL",
+      "description": "Controlled local test item",
+      "quantity": 1,
+      "unitPrice": 100,
+      "levyAmountA": 0,
+      "levyAmountB": 0,
+      "levyAmountC": 0,
+      "levyAmountD": 0,
+      "levyAmountE": 0,
+      "discountAmount": 0,
+      "exciseAmount": 0,
+      "batchCode": null,
+      "expireDate": null
+    }
+  ]
+}
+```
+
+The first submission returns HTTP `201`. With GRA disabled, the transaction remains `PendingGra` with `GRA_INTEGRATION_DISABLED`; that result confirms the safety switch worked. Copy the returned `transactionId`.
+
+6. Expand `GET /api/v1/transactions/{transactionId}`, select **Try it out**, paste the transaction ID, and execute it. This confirms the transaction was persisted for the authenticated tenant.
+7. Confirm the sanitized inbound exchanges in PostgreSQL with this one-line command from PowerShell:
+
+```powershell
+& "C:\Program Files\PostgreSQL\18\bin\psql.exe" -h localhost -p 5434 -U gra_evat_app -d gra_evat -W -c 'SELECT "Direction", "Operation", "ResponseStatusCode", "Outcome", "ErrorCode", "CreatedAt" FROM integration_exchange_logs ORDER BY "CreatedAt" DESC LIMIT 20;'
+```
+
+No outbound GRA exchange is expected while `GraApi:Enabled` is `false`, because the safety switch stops the client before an HTTP request is created.
 
 For a configured tenant, store its GRA security key under the secret name recorded at registration:
 
