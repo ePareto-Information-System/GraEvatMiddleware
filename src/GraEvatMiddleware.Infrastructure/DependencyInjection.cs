@@ -1,8 +1,10 @@
 using GraEvatMiddleware.Application.Abstractions;
 using GraEvatMiddleware.Application.Invoices;
+using GraEvatMiddleware.Application.Logging;
 using GraEvatMiddleware.Application.Tenants;
 using GraEvatMiddleware.Application.Transactions;
 using GraEvatMiddleware.Infrastructure.Authentication;
+using GraEvatMiddleware.Infrastructure.Logging;
 using GraEvatMiddleware.Infrastructure.Persistence;
 using GraEvatMiddleware.Infrastructure.Secrets;
 using GraEvatMiddleware.Infrastructure.Services;
@@ -22,6 +24,7 @@ public static class DependencyInjection
             ?? throw new InvalidOperationException("ConnectionStrings:Database must be configured.");
 
         services.Configure<SecurityOptions>(configuration.GetSection(SecurityOptions.SectionName));
+        services.Configure<ExchangeLoggingOptions>(configuration.GetSection(ExchangeLoggingOptions.SectionName));
         services.AddDbContext<AppDbContext>(options => options.UseNpgsql(connectionString));
         services.AddSingleton<ApiKeyMaterialService>();
         services.AddScoped<ITenantManagementService, TenantManagementService>();
@@ -30,6 +33,9 @@ public static class DependencyInjection
         services.AddScoped<IInvoiceService>(provider => provider.GetRequiredService<InvoiceService>());
         services.AddScoped<ITransactionQueryService>(provider => provider.GetRequiredService<InvoiceService>());
         services.AddScoped<IGraSecretProvider, ConfigurationGraSecretProvider>();
+        services.AddSingleton<IExchangeContentSanitizer, SensitiveDataSanitizer>();
+        services.AddSingleton<IIntegrationExchangeWriter, IntegrationExchangeWriter>();
+        services.AddScoped<IExchangeLogRetentionService, ExchangeLogRetentionService>();
         return services;
     }
 }
