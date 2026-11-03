@@ -2,7 +2,12 @@ using System.Net;
 using System.Net.Http.Json;
 using GraEvatMiddleware.Api.Contracts;
 using GraEvatMiddleware.Application.Invoices;
+using GraEvatMiddleware.Application.Logging;
 using GraEvatMiddleware.Application.Tenants;
+using GraEvatMiddleware.Domain.Integration;
+using GraEvatMiddleware.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace GraEvatMiddleware.IntegrationTests;
 
@@ -80,6 +85,128 @@ public sealed class InvoiceWorkflowTests(GraEvatApiFactory factory) : IClassFixt
 
         Assert.Equal(HttpStatusCode.Unauthorized, lookupResponse.StatusCode);
     }
+
+    [Fact]
+    public async Task ExchangeLogs_AreTenantScopedCorrelatedAndSecretFree()
+    {
+        using var client = factory.CreateClient();
+        var tenant = await RegisterTenantAsync(client);
+        const string correlationId = "integration-correlation-001";
+        using var submitRequest = CreateAuthenticatedInvoiceRequest(
+            tenant.Credential.ApiKey, "logged-invoice-key", CreateInvoiceRequest("INV-LOG-001", 118m));
+        submitRequest.Headers.Add("X-Correlation-ID", correlationId);
+        using var submitResponse = await client.SendAsync(submitRequest);
+        Assert.Equal(HttpStatusCode.Created, submitResponse.StatusCode);
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var logs = await dbContext.IntegrationExchanges
+            .Where(item => item.CorrelationId == correlationId)
+            .OrderBy(item => item.Direction)
+            .ToListAsync();
+
+        Assert.Equal(2, logs.Count);
+        Assert.Contains(logs, item => item.Direction == ExchangeDirection.Inbound &&
+                                     item.TenantId == tenant.TenantId && item.TransactionId != null);
+        Assert.Contains(logs, item => item.Direction == ExchangeDirection.Outbound &&
+                                     item.TenantId == tenant.TenantId && item.TransactionId != null);
+        Assert.All(logs, item => Assert.DoesNotContain(tenant.Credential.ApiKey,
+            $"{item.RequestHeadersJson}{item.RequestBody}{item.ResponseHeadersJson}{item.ResponseBody}",
+            StringComparison.Ordinal));
+        Assert.Contains(logs, item => item.Direction == ExchangeDirection.Outbound &&
+                                     item.RequestHeadersJson!.Contains("[REDACTED]", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task UnauthorizedRequest_IsLoggedWithoutApiKeyDisclosure()
+    {
+        using var client = factory.CreateClient();
+        const string invalidKey = "evat.invalid.invalid-secret";
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"/api/v1/transactions/{Guid.NewGuid()}");
+        request.Headers.Add("X-API-Key", invalidKey);
+        request.Headers.Add("X-Correlation-ID", "unauthorized-correlation");
+        using var response = await client.SendAsync(request);
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var log = await dbContext.IntegrationExchanges.SingleAsync(
+            item => item.CorrelationId == "unauthorized-correlation");
+        Assert.Equal(401, log.ResponseStatusCode);
+        Assert.Contains("[REDACTED]", log.RequestHeadersJson, StringComparison.Ordinal);
+        Assert.DoesNotContain(invalidKey, log.RequestHeadersJson, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task TenantRegistrationLog_RedactsIssuedApiKey()
+    {
+        using var client = factory.CreateClient();
+        var tenant = await RegisterTenantAsync(client);
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var log = await dbContext.IntegrationExchanges
+            .Where(item => item.Url == "/api/v1/admin/tenants" && item.ResponseStatusCode == 201)
+            .OrderByDescending(item => item.CreatedAt)
+            .FirstAsync();
+        Assert.Contains("[REDACTED]", log.ResponseBody, StringComparison.Ordinal);
+        Assert.DoesNotContain(tenant.Credential.ApiKey, log.ResponseBody, StringComparison.Ordinal);
+        Assert.DoesNotContain("integration-test-admin-key", log.RequestHeadersJson, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("REJECT-001", "Rejected", ExchangeOutcome.Rejected)]
+    [InlineData("TIMEOUT-001", "PendingGra", ExchangeOutcome.Failed)]
+    public async Task GraFailure_IsRecordedWithoutResubmission(
+        string invoiceNumber,
+        string expectedStatus,
+        ExchangeOutcome expectedOutcome)
+    {
+        using var client = factory.CreateClient();
+        var tenant = await RegisterTenantAsync(client);
+        var correlationId = $"failure-{invoiceNumber}";
+        using var request = CreateAuthenticatedInvoiceRequest(
+            tenant.Credential.ApiKey, $"key-{invoiceNumber}", CreateInvoiceRequest(invoiceNumber, 118m));
+        request.Headers.Add("X-Correlation-ID", correlationId);
+        using var response = await client.SendAsync(request);
+        var transaction = await response.Content.ReadFromJsonAsync<TransactionResult>();
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        Assert.Equal(expectedStatus, transaction?.Status);
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var outboundLogs = await dbContext.IntegrationExchanges
+            .Where(item => item.CorrelationId == correlationId && item.Direction == ExchangeDirection.Outbound)
+            .ToListAsync();
+        Assert.Single(outboundLogs);
+        Assert.Equal(expectedOutcome, outboundLogs[0].Outcome);
+    }
+
+    [Fact]
+    public async Task RetentionService_DeletesOnlyExpiredExchangeLogs()
+    {
+        var now = new DateTimeOffset(2026, 11, 3, 12, 0, 0, TimeSpan.Zero);
+        await using var scope = factory.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        dbContext.IntegrationExchanges.Add(CreateExchange(now.AddDays(-91), "expired-retention-log"));
+        dbContext.IntegrationExchanges.Add(CreateExchange(now.AddDays(-89), "current-retention-log"));
+        await dbContext.SaveChangesAsync();
+
+        var service = scope.ServiceProvider.GetRequiredService<IExchangeLogRetentionService>();
+        var deleted = await service.DeleteExpiredAsync(now);
+
+        Assert.Equal(1, deleted);
+        Assert.False(await dbContext.IntegrationExchanges.AnyAsync(
+            item => item.CorrelationId == "expired-retention-log"));
+        Assert.True(await dbContext.IntegrationExchanges.AnyAsync(
+            item => item.CorrelationId == "current-retention-log"));
+    }
+
+    private static IntegrationExchange CreateExchange(DateTimeOffset createdAt, string correlationId) =>
+        IntegrationExchange.Capture(
+            null, null, correlationId, null, ExchangeDirection.Inbound, "Test", "Middleware",
+            "RetentionTest", "GET", "/test", "{}", null, false, 200, "{}", null,
+            false, 1, 1, ExchangeOutcome.Succeeded, null, createdAt);
 
     private static async Task<TenantRegistrationResult> RegisterTenantAsync(HttpClient client)
     {

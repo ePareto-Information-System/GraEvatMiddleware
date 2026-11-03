@@ -1,4 +1,6 @@
 using GraEvatMiddleware.Application.Abstractions;
+using GraEvatMiddleware.Application.Logging;
+using GraEvatMiddleware.Domain.Integration;
 using GraEvatMiddleware.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -54,17 +56,33 @@ public sealed class GraEvatApiFactory : WebApplicationFactory<Program>
     }
 }
 
-internal sealed class SuccessfulGraEvatClient : IGraEvatClient
+internal sealed class SuccessfulGraEvatClient(
+    IIntegrationExchangeWriter writer,
+    IExchangeContentSanitizer sanitizer) : IGraEvatClient
 {
-    public Task<GraSubmissionResult> SubmitInvoiceAsync(
+    public async Task<GraSubmissionResult> SubmitInvoiceAsync(
         GraInvoiceSubmission submission,
         CancellationToken cancellationToken = default)
     {
-        return Task.FromResult(new GraSubmissionResult(
-            IsSuccessful: true,
-            IsPending: false,
-            IsRejected: false,
-            ExternalReference: $"GRA-{submission.Invoice.InvoiceNumber}",
-            ErrorCode: null));
+        var isRejected = submission.Invoice.InvoiceNumber.StartsWith("REJECT", StringComparison.Ordinal);
+        var isCommunicationFailure = submission.Invoice.InvoiceNumber.StartsWith("TIMEOUT", StringComparison.Ordinal);
+        var errorCode = isRejected ? "GRA_BUSINESS_REJECTION" :
+            isCommunicationFailure ? "GRA_COMMUNICATION_STATUS_UNKNOWN" : null;
+        await writer.WriteAsync(new IntegrationExchangeRecord(
+            submission.TenantId, submission.TransactionId, submission.CorrelationId,
+            submission.IdempotencyKey, ExchangeDirection.Outbound, "Middleware", "GRA",
+            submission.Operation, "POST", "/vsdc/api/v1/taxpayer/test/invoice",
+            sanitizer.SanitizeHeaders(new Dictionary<string, string[]> { ["security_key"] = ["test-secret"] }),
+            sanitizer.SanitizeBody(System.Text.Json.JsonSerializer.Serialize(submission.Invoice), "application/json", 65_536).Content,
+            false, isCommunicationFailure ? null : isRejected ? 400 : 200,
+            "{}", isCommunicationFailure ? null : isRejected ? "{\"status\":\"FAILED\"}" : "{\"status\":\"SUCCESS\"}",
+            false, 1, 1,
+            isCommunicationFailure ? ExchangeOutcome.Failed : isRejected ? ExchangeOutcome.Rejected : ExchangeOutcome.Succeeded,
+            errorCode, DateTimeOffset.UtcNow), cancellationToken);
+
+        if (isCommunicationFailure) throw new HttpRequestException("Controlled communication failure.");
+        return isRejected
+            ? new GraSubmissionResult(false, false, true, null, errorCode)
+            : new GraSubmissionResult(true, false, false, $"GRA-{submission.Invoice.InvoiceNumber}", null);
     }
 }
