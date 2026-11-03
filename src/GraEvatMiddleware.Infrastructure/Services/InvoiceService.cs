@@ -72,7 +72,11 @@ internal sealed class InvoiceService(
         {
             var result = await graClient.SubmitInvoiceAsync(
                 new GraInvoiceSubmission(
+                    transaction.Id,
                     tenant.Id,
+                    transaction.CorrelationId,
+                    transaction.IdempotencyKey,
+                    transaction.Operation.ToString(),
                     tenant.TaxpayerReference,
                     tenant.GraSecurityKeySecretName,
                     command.Invoice),

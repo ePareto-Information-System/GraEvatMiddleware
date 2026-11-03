@@ -1,17 +1,23 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Diagnostics;
 using System.Text.Json;
 using GraEvatMiddleware.Application.Abstractions;
 using GraEvatMiddleware.Application.Invoices;
+using GraEvatMiddleware.Application.Logging;
+using GraEvatMiddleware.Domain.Integration;
 using GraEvatMiddleware.GraClient.Configuration;
 using Microsoft.Extensions.Options;
 
 namespace GraEvatMiddleware.GraClient.Client;
 
-internal sealed class GraEvatClient(
+public sealed class GraEvatClient(
     HttpClient httpClient,
     IGraSecretProvider secretProvider,
-    IOptions<GraApiOptions> options) : IGraEvatClient
+    IExchangeContentSanitizer sanitizer,
+    IIntegrationExchangeWriter exchangeWriter,
+    IOptions<GraApiOptions> options,
+    IOptions<ExchangeLoggingOptions> exchangeOptions) : IGraEvatClient
 {
     private readonly GraApiOptions _options = options.Value;
 
@@ -42,18 +48,53 @@ internal sealed class GraEvatClient(
             return new GraSubmissionResult(false, true, false, null, "GRA_SECRET_NOT_CONFIGURED");
         }
 
-        httpClient.BaseAddress ??= baseUri;
+        httpClient.BaseAddress ??= new Uri(baseUri.AbsoluteUri.TrimEnd('/') + "/");
+        var relativeUrl = $"vsdc/api/v1/taxpayer/{Uri.EscapeDataString(submission.TaxpayerReference)}/invoice";
+        var payload = ToGraPayload(submission.Invoice);
         using var request = new HttpRequestMessage(
             HttpMethod.Post,
-            $"vsdc/api/v1/taxpayer/{Uri.EscapeDataString(submission.TaxpayerReference)}/invoice");
+            relativeUrl);
         request.Headers.Add("security_key", securityKey);
-        request.Content = JsonContent.Create(ToGraPayload(submission.Invoice));
+        request.Content = JsonContent.Create(payload);
+        var requestBody = JsonSerializer.Serialize(payload);
+        var stopwatch = Stopwatch.StartNew();
 
-        using var response = await httpClient.SendAsync(
-            request,
-            HttpCompletionOption.ResponseHeadersRead,
-            cancellationToken);
+        HttpResponseMessage? response = null;
+        string? responseBody = null;
+        try
+        {
+            response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            stopwatch.Stop();
+            await TryWriteExchangeAsync(submission, relativeUrl, requestBody, null, null,
+                stopwatch.ElapsedMilliseconds, ExchangeOutcome.Unknown, "GRA_TIMEOUT_STATUS_UNKNOWN");
+            throw;
+        }
+        catch (HttpRequestException)
+        {
+            stopwatch.Stop();
+            await TryWriteExchangeAsync(submission, relativeUrl, requestBody, null, null,
+                stopwatch.ElapsedMilliseconds, ExchangeOutcome.Failed, "GRA_COMMUNICATION_STATUS_UNKNOWN");
+            throw;
+        }
 
+        using (response)
+        {
+            stopwatch.Stop();
+            var result = MapResponse(response, responseBody);
+            var outcome = result.IsSuccessful ? ExchangeOutcome.Succeeded :
+                result.IsRejected ? ExchangeOutcome.Rejected : ExchangeOutcome.Unknown;
+            await TryWriteExchangeAsync(submission, relativeUrl, requestBody, response,
+                responseBody, stopwatch.ElapsedMilliseconds, outcome, result.ErrorCode);
+            return result;
+        }
+    }
+
+    private static GraSubmissionResult MapResponse(HttpResponseMessage response, string? responseBody)
+    {
         if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
         {
             return new GraSubmissionResult(false, false, true, null, "GRA_AUTHENTICATION_FAILED");
@@ -69,9 +110,69 @@ internal sealed class GraEvatClient(
             return new GraSubmissionResult(false, false, true, null, "GRA_REQUEST_REJECTED");
         }
 
-        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-        using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
-        return ParseResponse(document.RootElement);
+        if (string.IsNullOrWhiteSpace(responseBody))
+        {
+            return new GraSubmissionResult(false, true, false, null, "GRA_RESPONSE_INVALID");
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(responseBody);
+            return ParseResponse(document.RootElement);
+        }
+        catch (JsonException)
+        {
+            return new GraSubmissionResult(false, true, false, null, "GRA_RESPONSE_INVALID");
+        }
+    }
+
+    private async Task TryWriteExchangeAsync(
+        GraInvoiceSubmission submission,
+        string relativeUrl,
+        string requestBody,
+        HttpResponseMessage? response,
+        string? responseBody,
+        long durationMilliseconds,
+        ExchangeOutcome outcome,
+        string? errorCode)
+    {
+        if (!exchangeOptions.Value.Enabled)
+        {
+            return;
+        }
+
+        try
+        {
+            var captureBodies = exchangeOptions.Value.CaptureBodies;
+            var maximumCharacters = exchangeOptions.Value.MaximumBodyCharacters;
+            var requestContent = captureBodies
+                ? sanitizer.SanitizeBody(requestBody, "application/json", maximumCharacters)
+                : new SanitizedContent(null, false, false);
+            var responseContent = captureBodies
+                ? sanitizer.SanitizeBody(responseBody, response?.Content.Headers.ContentType?.ToString(), maximumCharacters)
+                : new SanitizedContent(null, false, false);
+            var requestHeaders = sanitizer.SanitizeHeaders(new Dictionary<string, string[]>
+            {
+                ["security_key"] = ["present"],
+                ["Content-Type"] = ["application/json"]
+            });
+            var responseHeaders = response is null ? null : sanitizer.SanitizeHeaders(
+                response.Headers.Concat(response.Content.Headers)
+                    .ToDictionary(item => item.Key, item => item.Value.ToArray(), StringComparer.OrdinalIgnoreCase));
+
+            await exchangeWriter.WriteAsync(new IntegrationExchangeRecord(
+                submission.TenantId, submission.TransactionId, submission.CorrelationId,
+                submission.IdempotencyKey, ExchangeDirection.Outbound, "Middleware", "GRA",
+                submission.Operation, HttpMethod.Post.Method, relativeUrl, requestHeaders,
+                requestContent.Content, requestContent.IsTruncated, (int?)response?.StatusCode,
+                responseHeaders, responseContent.Content, responseContent.IsTruncated,
+                durationMilliseconds, 1, outcome, errorCode, DateTimeOffset.UtcNow),
+                CancellationToken.None);
+        }
+        catch
+        {
+            // Exchange logging must never change the result of a tax operation.
+        }
     }
 
     private static object ToGraPayload(InvoiceCommand invoice)

@@ -1,5 +1,6 @@
 using GraEvatMiddleware.Api.Authentication;
 using GraEvatMiddleware.Api.Contracts;
+using GraEvatMiddleware.Api.Middleware;
 using GraEvatMiddleware.Application.Invoices;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -32,6 +33,8 @@ public sealed class InvoicesController(IInvoiceService invoiceService) : Control
                 HttpContext.TraceIdentifier,
                 request.ToCommand()),
             cancellationToken);
+
+        HttpContext.Items[ExchangeLoggingMiddleware.TransactionIdItemKey] = result.Transaction.TransactionId;
 
         return result.IsReplay
             ? Ok(result.Transaction)

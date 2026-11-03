@@ -10,7 +10,11 @@ public interface IGraEvatClient
 }
 
 public sealed record GraInvoiceSubmission(
+    Guid TransactionId,
     Guid TenantId,
+    string CorrelationId,
+    string IdempotencyKey,
+    string Operation,
     string TaxpayerReference,
     string SecurityKeySecretName,
     InvoiceCommand Invoice);
