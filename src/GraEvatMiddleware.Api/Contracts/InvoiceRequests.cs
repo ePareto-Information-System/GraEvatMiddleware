@@ -75,7 +75,7 @@ public sealed class InvoiceItemRequest
     [Required, StringLength(50, MinimumLength = 1)]
     public string ItemCode { get; init; } = string.Empty;
 
-    [Required, StringLength(50)]
+    [StringLength(50), RegularExpression("^(|CST|TRSM|EXM|RNT|EXC_PLASTIC)$")]
     public string ItemCategory { get; init; } = string.Empty;
 
     [Required, StringLength(100, MinimumLength = 1)]

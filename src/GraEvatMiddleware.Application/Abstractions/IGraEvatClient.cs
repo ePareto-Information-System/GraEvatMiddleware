@@ -7,6 +7,14 @@ public interface IGraEvatClient
     Task<GraSubmissionResult> SubmitInvoiceAsync(
         GraInvoiceSubmission submission,
         CancellationToken cancellationToken = default);
+
+    Task<GraReconciliationResult> ReconcileInvoiceAsync(
+        GraInvoiceReconciliation reconciliation,
+        CancellationToken cancellationToken = default);
+
+    Task<GraHealthResult> CheckHealthAsync(
+        GraHealthCheck healthCheck,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed record GraInvoiceSubmission(
@@ -24,4 +32,30 @@ public sealed record GraSubmissionResult(
     bool IsPending,
     bool IsRejected,
     string? ExternalReference,
+    string? ErrorCode);
+
+public sealed record GraInvoiceReconciliation(
+    Guid TransactionId,
+    Guid TenantId,
+    string CorrelationId,
+    string IdempotencyKey,
+    string Operation,
+    string TaxpayerReference,
+    string SecurityKeySecretName,
+    string InvoiceNumber);
+
+public sealed record GraReconciliationResult(
+    bool IsFound,
+    bool IsNotFound,
+    bool IsPending,
+    bool IsRejected,
+    string? ExternalReference,
+    string? ErrorCode);
+
+public sealed record GraHealthCheck(
+    string TaxpayerReference,
+    string SecurityKeySecretName);
+
+public sealed record GraHealthResult(
+    bool IsHealthy,
     string? ErrorCode);

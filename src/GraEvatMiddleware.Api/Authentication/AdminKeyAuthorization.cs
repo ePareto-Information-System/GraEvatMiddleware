@@ -20,7 +20,8 @@ public sealed class AdminKeyAuthorizationFilter(IOptions<SecurityOptions> option
             context.Result = new ObjectResult(new ProblemDetails
             {
                 Status = StatusCodes.Status503ServiceUnavailable,
-                Title = "Administrative authentication is not configured."
+                Title = "Administrative authentication is not configured.",
+                Extensions = { ["code"] = "ADMIN_AUTHENTICATION_NOT_CONFIGURED" }
             })
             {
                 StatusCode = StatusCodes.Status503ServiceUnavailable
@@ -34,7 +35,8 @@ public sealed class AdminKeyAuthorizationFilter(IOptions<SecurityOptions> option
             context.Result = new UnauthorizedObjectResult(new ProblemDetails
             {
                 Status = StatusCodes.Status401Unauthorized,
-                Title = "Administrative authentication failed."
+                Title = "Administrative authentication failed.",
+                Extensions = { ["code"] = "ADMIN_AUTHENTICATION_FAILED" }
             });
         }
 

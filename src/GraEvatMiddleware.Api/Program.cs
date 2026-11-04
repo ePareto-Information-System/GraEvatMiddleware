@@ -1,3 +1,7 @@
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using System.Threading.RateLimiting;
 using GraEvatMiddleware.Api.Authentication;
 using GraEvatMiddleware.Api.Middleware;
 using GraEvatMiddleware.Api.OpenApi;
@@ -18,7 +22,17 @@ builder.Services
     .ConfigureApiBehaviorOptions(options =>
     {
         options.InvalidModelStateResponseFactory = context =>
-            new UnprocessableEntityObjectResult(new ValidationProblemDetails(context.ModelState));
+        {
+            var problem = new ValidationProblemDetails(context.ModelState)
+            {
+                Status = StatusCodes.Status422UnprocessableEntity,
+                Title = "Request validation failed.",
+                Instance = context.HttpContext.Request.Path
+            };
+            problem.Extensions["code"] = "VALIDATION_FAILED";
+            problem.Extensions["correlationId"] = context.HttpContext.TraceIdentifier;
+            return new UnprocessableEntityObjectResult(problem);
+        };
     });
 builder.Services.AddOpenApi();
 builder.Services.AddSwaggerGen(options =>
@@ -55,6 +69,53 @@ builder.Services
         TenantApiKeyAuthenticationHandler.SchemeName,
         _ => { });
 builder.Services.AddAuthorization();
+builder.Services.Configure<RateLimitingOptions>(
+    builder.Configuration.GetSection(RateLimitingOptions.SectionName));
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+    {
+        var rateLimiting = context.RequestServices
+            .GetRequiredService<Microsoft.Extensions.Options.IOptions<RateLimitingOptions>>()
+            .Value;
+        if (!rateLimiting.Enabled)
+        {
+            return RateLimitPartition.GetNoLimiter("disabled");
+        }
+
+        var suppliedCredential = context.Request.Headers["X-API-Key"].FirstOrDefault()
+            ?? context.Request.Headers["X-Admin-Key"].FirstOrDefault();
+        var source = suppliedCredential ?? context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        var partition = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(source)));
+        return RateLimitPartition.GetFixedWindowLimiter(partition, _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = Math.Max(1, rateLimiting.PermitLimit),
+            Window = TimeSpan.FromSeconds(Math.Max(1, rateLimiting.WindowSeconds)),
+            QueueLimit = Math.Max(0, rateLimiting.QueueLimit),
+            QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+            AutoReplenishment = true
+        });
+    });
+    options.OnRejected = async (context, cancellationToken) =>
+    {
+        context.HttpContext.Response.ContentType = "application/problem+json";
+        var problem = new ProblemDetails
+        {
+            Status = StatusCodes.Status429TooManyRequests,
+            Title = "Request rate limit exceeded.",
+            Instance = context.HttpContext.Request.Path,
+            Extensions =
+            {
+                ["code"] = "RATE_LIMIT_EXCEEDED",
+                ["correlationId"] = context.HttpContext.TraceIdentifier
+            }
+        };
+        await context.HttpContext.Response.WriteAsync(
+            JsonSerializer.Serialize(problem),
+            cancellationToken);
+    };
+});
 
 var app = builder.Build();
 
@@ -76,6 +137,7 @@ app.UseHttpsRedirection();
 app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseMiddleware<ExchangeLoggingMiddleware>();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
+app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 

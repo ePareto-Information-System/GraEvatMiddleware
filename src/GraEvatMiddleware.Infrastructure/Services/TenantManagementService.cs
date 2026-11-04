@@ -90,6 +90,42 @@ internal sealed class TenantManagementService(
         return new IssuedCredentialResult(credential.Id, issued.RawKey, issued.Prefix, now);
     }
 
+    public async Task<IssuedCredentialResult> RotateCredentialAsync(
+        Guid tenantId,
+        Guid credentialId,
+        string correlationId,
+        CancellationToken cancellationToken = default)
+    {
+        var tenant = await FindTenantAsync(tenantId, cancellationToken);
+        if (tenant.Status == TenantStatus.Terminated)
+        {
+            throw new ResourceConflictException("Credentials cannot be rotated for a terminated tenant.");
+        }
+
+        var credential = tenant.Credentials.SingleOrDefault(item => item.Id == credentialId)
+            ?? throw new ResourceNotFoundException("Credential was not found.");
+        if (credential.Status != ApiCredentialStatus.Active)
+        {
+            throw new ResourceConflictException("Only an active credential can be rotated.");
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        var issued = keyMaterialService.Generate();
+        var replacement = ApiCredential.Issue(tenant.Id, issued.Prefix, issued.Hash, now);
+        credential.Revoke(now);
+        dbContext.ApiCredentials.Add(replacement);
+        dbContext.AuditEvents.Add(AuditEvent.Create(
+            tenant.Id,
+            "credential.rotated",
+            "api_credential",
+            replacement.Id.ToString(),
+            correlationId,
+            JsonSerializer.Serialize(new { previousCredentialId = credential.Id }),
+            now));
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return new IssuedCredentialResult(replacement.Id, issued.RawKey, issued.Prefix, now);
+    }
+
     public async Task RevokeCredentialAsync(
         Guid tenantId,
         Guid credentialId,
@@ -121,6 +157,49 @@ internal sealed class TenantManagementService(
     public Task SuspendAsync(Guid tenantId, string correlationId, CancellationToken cancellationToken = default)
     {
         return SetStatusAsync(tenantId, false, correlationId, cancellationToken);
+    }
+
+    public async Task TerminateAsync(
+        Guid tenantId,
+        string correlationId,
+        CancellationToken cancellationToken = default)
+    {
+        var tenant = await FindTenantAsync(tenantId, cancellationToken);
+        var now = DateTimeOffset.UtcNow;
+        tenant.Terminate(now);
+        dbContext.AuditEvents.Add(AuditEvent.Create(
+            tenant.Id, "tenant.terminated", "tenant", tenant.Id.ToString(), correlationId, "{}", now));
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task UpdateConfigurationAsync(
+        Guid tenantId,
+        UpdateTenantConfigurationCommand command,
+        CancellationToken cancellationToken = default)
+    {
+        var tenant = await FindTenantAsync(tenantId, cancellationToken);
+        var taxpayerReference = command.TaxpayerReference.Trim();
+        if (await dbContext.Tenants.AnyAsync(
+                item => item.Id != tenantId && item.TaxpayerReference == taxpayerReference,
+                cancellationToken))
+        {
+            throw new ResourceConflictException("This GRA taxpayer reference is already registered.");
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        tenant.UpdateIntegrationConfiguration(
+            taxpayerReference,
+            command.GraSecurityKeySecretName,
+            now);
+        dbContext.AuditEvents.Add(AuditEvent.Create(
+            tenant.Id,
+            "tenant.configuration_updated",
+            "tenant",
+            tenant.Id.ToString(),
+            command.CorrelationId,
+            JsonSerializer.Serialize(new { tenant.TaxpayerReference, tenant.GraSecurityKeySecretName }),
+            now));
+        await dbContext.SaveChangesAsync(cancellationToken);
     }
 
     private async Task SetStatusAsync(

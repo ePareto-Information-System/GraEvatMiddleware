@@ -12,6 +12,131 @@ namespace GraEvatMiddleware.UnitTests;
 public sealed class GraEvatClientTests
 {
     [Fact]
+    public async Task StagingSubmission_UsesApprovedHostAndVersion82InvoicePath()
+    {
+        var handler = new RecordingResponseHandler(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("{\"response\":{\"status\":\"SUCCESS\",\"message\":{\"ysdcrecnum\":\"1001-6239-NS8\"}}}",
+                System.Text.Encoding.UTF8, "application/json")
+        });
+        using var httpClient = new HttpClient(handler);
+        var client = CreateClient(httpClient, new GraApiOptions
+        {
+            Enabled = true,
+            Environment = "Staging",
+            BaseUrl = "https://vsdcstaging.vat-gh.com/",
+            AllowedHosts = ["vsdcstaging.vat-gh.com"]
+        });
+
+        var result = await client.SubmitInvoiceAsync(CreateSubmission());
+
+        Assert.True(result.IsSuccessful);
+        Assert.Equal("https://vsdcstaging.vat-gh.com/vsdc/api/v1/taxpayer/TIN-001/invoice",
+            handler.RequestUri?.AbsoluteUri);
+        Assert.True(handler.HadSecurityKeyHeader);
+        Assert.Contains("\"totalExciseAmount\":0", handler.RequestBody, StringComparison.Ordinal);
+        Assert.Contains("\"flag\":\"INVOICE\"", handler.RequestBody, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("Production", "https://vsdcstaging.vat-gh.com/", "GRA_ENVIRONMENT_NOT_ALLOWED")]
+    [InlineData("Staging", "http://vsdcstaging.vat-gh.com/", "GRA_HTTPS_REQUIRED")]
+    [InlineData("Staging", "https://example.com/", "GRA_HOST_NOT_ALLOWED")]
+    public async Task UnsafeConfiguration_IsRejectedBeforeSending(
+        string environment,
+        string baseUrl,
+        string expectedError)
+    {
+        var handler = new RecordingResponseHandler(new HttpResponseMessage(HttpStatusCode.OK));
+        using var httpClient = new HttpClient(handler);
+        var client = CreateClient(httpClient, new GraApiOptions
+        {
+            Enabled = true,
+            Environment = environment,
+            BaseUrl = baseUrl,
+            AllowedHosts = ["vsdcstaging.vat-gh.com"]
+        });
+
+        var result = await client.SubmitInvoiceAsync(CreateSubmission());
+
+        Assert.True(result.IsPending);
+        Assert.Equal(expectedError, result.ErrorCode);
+        Assert.Null(handler.RequestUri);
+    }
+
+    [Fact]
+    public async Task StagingEnvironment_RejectsAnAllowedButNonStagingRealHost()
+    {
+        var handler = new RecordingResponseHandler(new HttpResponseMessage(HttpStatusCode.OK));
+        using var httpClient = new HttpClient(handler);
+        var client = CreateClient(httpClient, new GraApiOptions
+        {
+            Enabled = true,
+            Environment = "Staging",
+            BaseUrl = "https://vsdc.vat-gh.com/",
+            AllowedHosts = ["vsdc.vat-gh.com"]
+        });
+
+        var result = await client.SubmitInvoiceAsync(CreateSubmission());
+
+        Assert.Equal("GRA_STAGING_HOST_REQUIRED", result.ErrorCode);
+        Assert.Null(handler.RequestUri);
+    }
+
+    [Fact]
+    public async Task Reconciliation_UsesDocumentedCallbackAndParsesSuccessfulInvoice()
+    {
+        var handler = new RecordingResponseHandler(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("{\"response\":{\"status\":\"SUCCESS\",\"message\":{\"num\":\"INV-001\",\"ysdcrecnum\":\"1001-5FC8-NS1\"}}}",
+                System.Text.Encoding.UTF8, "application/json")
+        });
+        using var httpClient = new HttpClient(handler);
+        var client = CreateClient(httpClient, new GraApiOptions
+        {
+            Enabled = true,
+            Environment = "Staging",
+            BaseUrl = "https://vsdcstaging.vat-gh.com/",
+            AllowedHosts = ["vsdcstaging.vat-gh.com"]
+        });
+
+        var result = await client.ReconcileInvoiceAsync(new GraInvoiceReconciliation(
+            Guid.NewGuid(), Guid.NewGuid(), "correlation", "idempotency-key", "InvoiceReconciliation",
+            "TIN-001", "gra-secret-name", "INV-001"));
+
+        Assert.True(result.IsFound);
+        Assert.Equal("1001-5FC8-NS1", result.ExternalReference);
+        Assert.Equal("https://vsdcstaging.vat-gh.com/vsdc/api/v1/taxpayer/TIN-001/invoice/callback",
+            handler.RequestUri?.AbsoluteUri);
+        Assert.Contains("\"invoiceNumber\":\"INV-001\"", handler.RequestBody, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Reconciliation_NormalizesDocumentedNumericNotFoundCode()
+    {
+        var handler = new RecordingResponseHandler(new HttpResponseMessage(HttpStatusCode.BadRequest)
+        {
+            Content = new StringContent("{\"status\":701,\"error\":\"invoice not found\"}",
+                System.Text.Encoding.UTF8, "application/json")
+        });
+        using var httpClient = new HttpClient(handler);
+        var client = CreateClient(httpClient, new GraApiOptions
+        {
+            Enabled = true,
+            Environment = "Staging",
+            BaseUrl = "https://vsdcstaging.vat-gh.com/",
+            AllowedHosts = ["vsdcstaging.vat-gh.com"]
+        });
+
+        var result = await client.ReconcileInvoiceAsync(new GraInvoiceReconciliation(
+            Guid.NewGuid(), Guid.NewGuid(), "correlation", "idempotency-key", "InvoiceReconciliation",
+            "TIN-001", "gra-secret-name", "INV-001"));
+
+        Assert.True(result.IsNotFound);
+        Assert.Equal("E701", result.ErrorCode);
+    }
+
+    [Fact]
     public async Task SuccessfulSubmission_IsNotChangedWhenExchangeLoggingFails()
     {
         using var httpClient = new HttpClient(new StaticResponseHandler(new HttpResponseMessage(HttpStatusCode.OK)
@@ -19,13 +144,13 @@ public sealed class GraEvatClientTests
             Content = new StringContent("{\"response\":{\"status\":\"SUCCESS\",\"message\":{\"ysdcrecnum\":\"GRA-1\"}}}",
                 System.Text.Encoding.UTF8, "application/json")
         }));
-        var client = new GraEvatClient(
-            httpClient,
-            new FixedSecretProvider(),
-            new SensitiveDataSanitizer(),
-            new ThrowingExchangeWriter(),
-            Options.Create(new GraApiOptions { Enabled = true, BaseUrl = "https://gra.example/" }),
-            Options.Create(new ExchangeLoggingOptions()));
+        var client = CreateClient(httpClient, new GraApiOptions
+        {
+            Enabled = true,
+            Environment = "Staging",
+            BaseUrl = "https://gra.example/",
+            AllowedHosts = ["gra.example"]
+        }, new ThrowingExchangeWriter());
 
         var result = await client.SubmitInvoiceAsync(CreateSubmission());
 
@@ -33,13 +158,24 @@ public sealed class GraEvatClientTests
         Assert.Equal("GRA-1", result.ExternalReference);
     }
 
+    private static GraEvatClient CreateClient(
+        HttpClient httpClient,
+        GraApiOptions options,
+        IIntegrationExchangeWriter? writer = null) => new(
+        httpClient,
+        new FixedSecretProvider(),
+        new SensitiveDataSanitizer(),
+        writer ?? new NullExchangeWriter(),
+        Options.Create(options),
+        Options.Create(new ExchangeLoggingOptions()));
+
     private static GraInvoiceSubmission CreateSubmission() => new(
         Guid.NewGuid(), Guid.NewGuid(), "correlation", "idempotency-key", "Invoice", "TIN-001",
         "gra-secret-name",
         new InvoiceCommand(
             "INV-001", "GHS", 1, "INCLUSIVE", new DateOnly(2026, 11, 3), 18, 0, 118,
             "Customer", "C0000000001", "NORMAL", null, 0, null,
-            [new InvoiceItemCommand("ITEM-1", "GENERAL", "Service", 1, 118, 0, 0, 0, 0, 0, 0, 0, null, null)]));
+            [new InvoiceItemCommand("ITEM-1", string.Empty, "Service", 1, 118, 0, 0, 0, 0, 0, 0, 0, null, null)]));
 
     private sealed class FixedSecretProvider : IGraSecretProvider
     {
@@ -53,10 +189,35 @@ public sealed class GraEvatClientTests
             throw new InvalidOperationException("Controlled logging failure.");
     }
 
+    private sealed class NullExchangeWriter : IIntegrationExchangeWriter
+    {
+        public Task WriteAsync(IntegrationExchangeRecord record, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
+    }
+
     private sealed class StaticResponseHandler(HttpResponseMessage response) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken cancellationToken) => Task.FromResult(response);
+    }
+
+    private sealed class RecordingResponseHandler(HttpResponseMessage response) : HttpMessageHandler
+    {
+        public Uri? RequestUri { get; private set; }
+        public bool HadSecurityKeyHeader { get; private set; }
+        public string RequestBody { get; private set; } = string.Empty;
+
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            RequestUri = request.RequestUri;
+            HadSecurityKeyHeader = request.Headers.Contains("security_key");
+            RequestBody = request.Content is null
+                ? string.Empty
+                : await request.Content.ReadAsStringAsync(cancellationToken);
+            return response;
+        }
     }
 }

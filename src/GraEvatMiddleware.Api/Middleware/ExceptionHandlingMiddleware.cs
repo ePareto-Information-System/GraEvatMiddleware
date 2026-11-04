@@ -22,14 +22,14 @@ public sealed class ExceptionHandlingMiddleware(
 
     private async Task WriteProblemAsync(HttpContext context, Exception exception)
     {
-        var (status, title) = exception switch
+        var (status, title, code) = exception switch
         {
-            ResourceNotFoundException => (StatusCodes.Status404NotFound, "Resource not found."),
-            ResourceConflictException => (StatusCodes.Status409Conflict, exception.Message),
-            IdempotencyConflictException => (StatusCodes.Status409Conflict, exception.Message),
-            DomainValidationException => (StatusCodes.Status422UnprocessableEntity, exception.Message),
-            ConfigurationMissingException => (StatusCodes.Status503ServiceUnavailable, exception.Message),
-            _ => (StatusCodes.Status500InternalServerError, "An unexpected error occurred.")
+            ResourceNotFoundException => (StatusCodes.Status404NotFound, "Resource not found.", "RESOURCE_NOT_FOUND"),
+            ResourceConflictException => (StatusCodes.Status409Conflict, exception.Message, "RESOURCE_CONFLICT"),
+            IdempotencyConflictException => (StatusCodes.Status409Conflict, exception.Message, "IDEMPOTENCY_CONFLICT"),
+            DomainValidationException => (StatusCodes.Status422UnprocessableEntity, exception.Message, "VALIDATION_FAILED"),
+            ConfigurationMissingException => (StatusCodes.Status503ServiceUnavailable, exception.Message, "CONFIGURATION_MISSING"),
+            _ => (StatusCodes.Status500InternalServerError, "An unexpected error occurred.", "INTERNAL_ERROR")
         };
 
         if (status == StatusCodes.Status500InternalServerError)
@@ -44,7 +44,11 @@ public sealed class ExceptionHandlingMiddleware(
             Status = status,
             Title = title,
             Instance = context.Request.Path,
-            Extensions = { ["correlationId"] = context.TraceIdentifier }
+            Extensions =
+            {
+                ["code"] = code,
+                ["correlationId"] = context.TraceIdentifier
+            }
         });
     }
 }

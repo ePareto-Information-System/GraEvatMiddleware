@@ -2,7 +2,9 @@ namespace GraEvatMiddleware.Domain.Integration;
 
 public sealed class IntegrationExchange
 {
-    private IntegrationExchange() { }
+    private IntegrationExchange()
+    {
+    }
 
     public Guid Id { get; private set; }
     public Guid? TenantId { get; private set; }
@@ -38,15 +40,29 @@ public sealed class IntegrationExchange
     {
         return new IntegrationExchange
         {
-            Id = Guid.NewGuid(), TenantId = tenantId, TransactionId = transactionId,
-            CorrelationId = correlationId, IdempotencyKey = idempotencyKey, Direction = direction,
-            SourceSystem = sourceSystem, DestinationSystem = destinationSystem, Operation = operation,
-            HttpMethod = httpMethod, Url = url, RequestHeadersJson = requestHeadersJson,
-            RequestBody = requestBody, RequestBodyTruncated = requestBodyTruncated,
-            ResponseStatusCode = responseStatusCode, ResponseHeadersJson = responseHeadersJson,
-            ResponseBody = responseBody, ResponseBodyTruncated = responseBodyTruncated,
-            DurationMilliseconds = Math.Max(0, durationMilliseconds), AttemptNumber = Math.Max(1, attemptNumber),
-            Outcome = outcome, ErrorCode = errorCode, CreatedAt = createdAt
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            TransactionId = transactionId,
+            CorrelationId = correlationId,
+            IdempotencyKey = idempotencyKey,
+            Direction = direction,
+            SourceSystem = sourceSystem,
+            DestinationSystem = destinationSystem,
+            Operation = operation,
+            HttpMethod = httpMethod,
+            Url = url,
+            RequestHeadersJson = requestHeadersJson,
+            RequestBody = requestBody,
+            RequestBodyTruncated = requestBodyTruncated,
+            ResponseStatusCode = responseStatusCode,
+            ResponseHeadersJson = responseHeadersJson,
+            ResponseBody = responseBody,
+            ResponseBodyTruncated = responseBodyTruncated,
+            DurationMilliseconds = Math.Max(0, durationMilliseconds),
+            AttemptNumber = Math.Max(1, attemptNumber),
+            Outcome = outcome,
+            ErrorCode = errorCode,
+            CreatedAt = createdAt
         };
     }
 }

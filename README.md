@@ -12,14 +12,16 @@ Multi-tenant ASP.NET Core middleware that exposes a canonical API for Odoo and i
 
 ## Implemented baseline
 
-- Tenant registration, activation and suspension
-- Per-tenant API key issuance and revocation with HMAC-SHA256 hashing
+- Tenant registration, activation, suspension, irreversible termination and configuration updates
+- Per-tenant API key issuance, atomic rotation and revocation with HMAC-SHA256 hashing
 - Canonical invoice submission endpoint for Odoo, Python and other HTTP clients
 - Tenant-scoped idempotency and transaction lookup
 - PostgreSQL persistence, initial EF Core migration and audit events
 - Sanitized inbound and outbound request/response exchange logs
 - GRA v8.2 invoice adapter with secret indirection and conservative timeout handling
+- Durable GRA retry jobs with lease-based multi-instance claiming and callback-first reconciliation
 - Correlation IDs, RFC 7807 errors and health endpoint
+- Tenant-scoped audit lookup and configurable request rate limiting
 - Domain, architecture and HTTP workflow tests
 
 The GRA integration is disabled by default. Enable it only after supplying the approved base URL and credentials for the target GRA environment.
@@ -93,7 +95,7 @@ The secret name is only a reference label while GRA integration is disabled. The
   "items": [
     {
       "itemCode": "ITEM-001",
-      "itemCategory": "GENERAL",
+      "itemCategory": "",
       "description": "Controlled local test item",
       "quantity": 1,
       "unitPrice": 100,
@@ -125,12 +127,63 @@ No outbound GRA exchange is expected while `GraApi:Enabled` is `false`, because 
 For a configured tenant, store its GRA security key under the secret name recorded at registration:
 
 ```powershell
-dotnet user-secrets set "GraSecrets:<secret-name>" "<GRA-security-key>" --project src/GraEvatMiddleware.Api
-dotnet user-secrets set "GraApi:BaseUrl" "<approved-GRA-base-URL>" --project src/GraEvatMiddleware.Api
-dotnet user-secrets set "GraApi:Enabled" "true" --project src/GraEvatMiddleware.Api
+dotnet user-secrets set "GraSecrets:<secret-name>" "<GRA-staging-security-key>" --project src/GraEvatMiddleware.Api
+dotnet user-secrets set "GraApi:BaseUrl" "https://vsdcstaging.vat-gh.com/" --project src/GraEvatMiddleware.Api
+dotnet user-secrets set "GraApi:Environment" "Staging" --project src/GraEvatMiddleware.Api
+dotnet user-secrets set "GraApi:AllowedHosts:0" "vsdcstaging.vat-gh.com" --project src/GraEvatMiddleware.Api
+dotnet user-secrets set "GraApi:EnableStagingIntegrationTests" "true" --project src/GraEvatMiddleware.Api
+dotnet user-secrets set "GraStaging:TaxpayerReference" "<approved-staging-reference>" --project src/GraEvatMiddleware.Api
+dotnet user-secrets set "GraStaging:SecurityKeySecretName" "<secret-name>" --project src/GraEvatMiddleware.Api
 ```
 
+The client refuses non-HTTPS URLs, non-staging environments and hosts not listed in `GraApi:AllowedHosts`. Redirect following is disabled so the `security_key` header cannot be forwarded to a different host.
+
+Run the real staging test only when the configuration above points to the documented GRA staging environment. It checks GRA health, submits one synthetic invoice with a unique `EVAT-STAGE-<timestamp>` number, requests the invoice callback and verifies captured logs do not contain the security key:
+
+```powershell
+$env:GRA_STAGING_TESTS_ENABLED='true'; $env:GraApi__Enabled='true'; dotnet test .\tests\GraEvatMiddleware.IntegrationTests\GraEvatMiddleware.IntegrationTests.csproj --filter "Category=GraStaging"; Remove-Item Env:GRA_STAGING_TESTS_ENABLED; Remove-Item Env:GraApi__Enabled
+```
+
+The staging test is excluded from ordinary test runs to prevent accidental invoice submissions. `GraApi:Enabled` remains false in tracked and local configuration; the command enables it only for that test process.
+
+## GRA retry and reconciliation
+
+`GraRetry:Enabled` controls creation of durable retry jobs. `GraRetry:WorkerEnabled` controls the background processor separately, allowing jobs and migrations to be inspected before processing begins.
+
+The worker always calls the documented GRA invoice callback before considering a resubmission. An ambiguous timeout or connection failure is never automatically resubmitted. Only a temporary failure may be resubmitted, and only after callback reports that the invoice was not found. Claims use an atomic conditional PostgreSQL update with a lease, so concurrent middleware instances cannot process the same job. Expired leases can be reclaimed after a crashed worker.
+
+Apply the reviewed retry migration with this one-line PowerShell command:
+
+```powershell
+dotnet tool run dotnet-ef database update --project .\src\GraEvatMiddleware.Infrastructure --startup-project .\src\GraEvatMiddleware.Api
+```
+
+Inspect retry jobs with this one-line PowerShell command:
+
+```powershell
+& "C:\Program Files\PostgreSQL\18\bin\psql.exe" -h localhost -p 5434 -U gra_evat_app -d gra_evat -W -c 'SELECT "TransactionId", "TenantId", "Status", "FailureClassification", "AttemptNumber", "MaxAttempts", "NextAttemptAt", "LastErrorCode" FROM gra_retry_jobs ORDER BY "CreatedAt" DESC LIMIT 20;'
+```
+
+The persisted canonical retry payload contains invoice data needed for a safe resubmission. Production deployment therefore requires database encryption, least-privilege database access and an approved retention period.
+
 The canonical contract is documented in [docs/api-contract-v1.md](docs/api-contract-v1.md) and [docs/openapi-v1.yaml](docs/openapi-v1.yaml).
+
+Operational guidance is in [docs/operations-runbook.md](docs/operations-runbook.md), [docs/tenant-onboarding.md](docs/tenant-onboarding.md), [docs/threat-model.md](docs/threat-model.md) and [docs/test-evidence.md](docs/test-evidence.md).
+
+## Rate limiting
+
+Rate limiting is enabled by default and configured without code changes:
+
+```json
+"RateLimiting": {
+  "Enabled": true,
+  "PermitLimit": 120,
+  "WindowSeconds": 60,
+  "QueueLimit": 0
+}
+```
+
+The partition key is a SHA-256 fingerprint of the supplied middleware credential, or the remote address for unauthenticated requests. The raw key is not retained. A rejected request returns HTTP 429 with code `RATE_LIMIT_EXCEEDED`.
 
 ## Request and response exchange logs
 

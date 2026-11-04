@@ -23,3 +23,29 @@ The Odoo-facing tenant credential and the tenant's GRA security key are separate
 `SensitiveDataSanitizer` is shared by both paths. It redacts sensitive headers and recursively replaces sensitive JSON properties before applying the configured storage limit. Binary and unsupported content types are omitted. The `integration_exchange_logs` table is indexed by tenant/date, transaction, correlation ID, operation/date and outcome/date.
 
 `IExchangeLogRetentionService` deletes records older than `ExchangeLogging:RetentionDays` when invoked by an authorized operational process. It is intentionally not exposed through a public endpoint or scheduled automatically in the development baseline.
+
+## GRA staging boundary
+
+`GraEvatClient` accepts outbound traffic only when the configured environment is `Staging`, the base URL uses HTTPS and the host is explicitly present in `GraApi:AllowedHosts`. Automatic redirect following is disabled. These checks prevent a configuration mistake from sending `security_key` to a production or unrelated host during the staging phase.
+
+The v8.2 staging integration uses the documented invoice, health and invoice-callback operations. The callback is the authoritative reconciliation operation for an invoice whose submission result is uncertain.
+
+## Retry and reconciliation
+
+`gra_retry_jobs` stores the tenant, transaction, failure classification, canonical payload, attempt counters, next-attempt time and lease state. There is one retry job per transaction.
+
+The retry processor claims one due job using an atomic conditional `UPDATE`. The update succeeds only while the job is due, below its attempt limit and unleased or holding an expired lease. This provides cross-process mutual exclusion without depending on in-memory locks. A worker crash leaves a time-limited lease that another instance can reclaim.
+
+Every retry cycle calls the GRA invoice callback first. If callback finds the invoice, the local transaction becomes successful without resubmission. An ambiguous submission remains reconciliation-only when callback does not find it. A temporary failure can be resubmitted only after callback reports the invoice was not found. Permanent business rejections and authentication failures are not retried.
+
+The background worker is disabled by default. `GraRetry:Enabled` permits scheduling, while `GraRetry:WorkerEnabled` separately permits processing. Retry lifecycle changes create audit events, and GRA submission and callback exchanges use the existing sanitized exchange logger.
+
+## Tenant administration and audit access
+
+Administrative operations use the separately configured `X-Admin-Key`. Credential rotation revokes the old credential and creates the replacement in one database save. Termination is irreversible through the API and revokes all active tenant credentials. GRA configuration updates store only the secret-store name, never the GRA key itself.
+
+Tenant-facing audit lookup derives tenant identity from the authenticated API key and applies that tenant ID in the database query. Audit metadata is not returned by the public query because it can contain operational detail intended for administrators.
+
+## Abuse protection
+
+The global fixed-window limiter partitions requests by a SHA-256 fingerprint of the supplied middleware credential, or by remote address when no credential is present. The raw credential is not stored in the limiter key. Rejected requests return HTTP 429 with `RATE_LIMIT_EXCEEDED` and are still visible to the sanitized inbound exchange logger. Production limits remain configuration-driven.

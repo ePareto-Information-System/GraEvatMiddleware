@@ -17,6 +17,9 @@ public static class DependencyInjection
         {
             var options = provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<GraApiOptions>>().Value;
             client.Timeout = TimeSpan.FromSeconds(Math.Clamp(options.RequestTimeoutSeconds, 1, 120));
+        }).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+        {
+            AllowAutoRedirect = false
         });
         return services;
     }
