@@ -129,6 +129,30 @@ public sealed class EVatTransaction
         UpdatedAt = now;
     }
 
+    public void MarkRetrying(DateTimeOffset now)
+    {
+        if (Status is not (TransactionStatus.PendingGra or TransactionStatus.TemporaryFailure))
+        {
+            throw new DomainValidationException($"Transaction cannot be retried from {Status}.");
+        }
+
+        Status = TransactionStatus.Submitting;
+        UpdatedAt = now;
+    }
+
+    public void MarkReconciledSucceeded(string? externalReference, DateTimeOffset now)
+    {
+        if (Status is not (TransactionStatus.PendingGra or TransactionStatus.TemporaryFailure))
+        {
+            throw new DomainValidationException($"Transaction cannot be reconciled from {Status}.");
+        }
+
+        Status = TransactionStatus.Succeeded;
+        ExternalReference = externalReference;
+        ErrorCode = null;
+        UpdatedAt = now;
+    }
+
     private void TransitionFrom(TransactionStatus expected, TransactionStatus next, DateTimeOffset now)
     {
         EnsureStatus(expected);

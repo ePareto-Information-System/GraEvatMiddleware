@@ -108,6 +108,27 @@ public sealed class Tenant
         }
     }
 
+    public void UpdateIntegrationConfiguration(
+        string taxpayerReference,
+        string graSecurityKeySecretName,
+        DateTimeOffset now)
+    {
+        EnsureNotTerminated();
+        if (string.IsNullOrWhiteSpace(taxpayerReference))
+        {
+            throw new DomainValidationException("GRA taxpayer reference is required.");
+        }
+
+        if (string.IsNullOrWhiteSpace(graSecurityKeySecretName))
+        {
+            throw new DomainValidationException("GRA security-key secret name is required.");
+        }
+
+        TaxpayerReference = taxpayerReference.Trim();
+        GraSecurityKeySecretName = graSecurityKeySecretName.Trim();
+        UpdatedAt = now;
+    }
+
     private void EnsureNotTerminated()
     {
         if (Status == TenantStatus.Terminated)

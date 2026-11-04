@@ -16,3 +16,12 @@ public sealed class RegisterTenantRequest
     [Required, StringLength(200, MinimumLength = 1)]
     public string GraSecurityKeySecretName { get; init; } = string.Empty;
 }
+
+public sealed class UpdateTenantConfigurationRequest
+{
+    [Required, StringLength(64, MinimumLength = 3)]
+    public string TaxpayerReference { get; init; } = string.Empty;
+
+    [Required, StringLength(200, MinimumLength = 1)]
+    public string GraSecurityKeySecretName { get; init; } = string.Empty;
+}

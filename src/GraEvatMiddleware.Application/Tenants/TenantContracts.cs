@@ -20,6 +20,11 @@ public sealed record IssuedCredentialResult(
     string KeyPrefix,
     DateTimeOffset CreatedAt);
 
+public sealed record UpdateTenantConfigurationCommand(
+    string TaxpayerReference,
+    string GraSecurityKeySecretName,
+    string CorrelationId);
+
 public sealed record ApiKeyAuthenticationResult(
     bool IsAuthenticated,
     Guid? TenantId,

@@ -4,18 +4,22 @@ using System.Text.Json;
 using GraEvatMiddleware.Application.Abstractions;
 using GraEvatMiddleware.Application.Common;
 using GraEvatMiddleware.Application.Invoices;
+using GraEvatMiddleware.Application.Retry;
 using GraEvatMiddleware.Application.Transactions;
 using GraEvatMiddleware.Domain.Auditing;
 using GraEvatMiddleware.Domain.Tenants;
 using GraEvatMiddleware.Domain.Transactions;
+using GraEvatMiddleware.Domain.Retry;
 using GraEvatMiddleware.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace GraEvatMiddleware.Infrastructure.Services;
 
 internal sealed class InvoiceService(
     AppDbContext dbContext,
-    IGraEvatClient graClient) : IInvoiceService, ITransactionQueryService
+    IGraEvatClient graClient,
+    IOptions<GraRetryOptions> retryOptions) : IInvoiceService, ITransactionQueryService
 {
     public async Task<InvoiceSubmissionResult> SubmitAsync(
         SubmitInvoiceCommand command,
@@ -94,6 +98,8 @@ internal sealed class InvoiceService(
             else if (result.IsPending)
             {
                 transaction.MarkPending(result.ErrorCode ?? "GRA_STATUS_UNKNOWN", completedAt);
+                ScheduleRetryIfRequired(transaction, command.Invoice,
+                    result.ErrorCode ?? "GRA_STATUS_UNKNOWN", completedAt);
             }
             else
             {
@@ -102,11 +108,15 @@ internal sealed class InvoiceService(
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            transaction.MarkPending("GRA_TIMEOUT_STATUS_UNKNOWN", DateTimeOffset.UtcNow);
+            var failedAt = DateTimeOffset.UtcNow;
+            transaction.MarkPending("GRA_TIMEOUT_STATUS_UNKNOWN", failedAt);
+            ScheduleRetryIfRequired(transaction, command.Invoice, "GRA_TIMEOUT_STATUS_UNKNOWN", failedAt);
         }
         catch (HttpRequestException)
         {
-            transaction.MarkPending("GRA_COMMUNICATION_STATUS_UNKNOWN", DateTimeOffset.UtcNow);
+            var failedAt = DateTimeOffset.UtcNow;
+            transaction.MarkPending("GRA_COMMUNICATION_STATUS_UNKNOWN", failedAt);
+            ScheduleRetryIfRequired(transaction, command.Invoice, "GRA_COMMUNICATION_STATUS_UNKNOWN", failedAt);
         }
 
         dbContext.AuditEvents.Add(CreateTransactionAudit(transaction, "transaction.completed", transaction.UpdatedAt));
@@ -167,6 +177,50 @@ internal sealed class InvoiceService(
             transaction.CorrelationId,
             JsonSerializer.Serialize(new { transaction.InvoiceNumber, status = transaction.Status.ToString() }),
             now);
+    }
+
+    private void ScheduleRetryIfRequired(
+        EVatTransaction transaction,
+        InvoiceCommand invoice,
+        string errorCode,
+        DateTimeOffset now)
+    {
+        if (!retryOptions.Value.Enabled ||
+            errorCode is "GRA_INTEGRATION_DISABLED" or "GRA_SECRET_NOT_CONFIGURED" or
+                "GRA_ENVIRONMENT_NOT_ALLOWED" or "GRA_BASE_URL_INVALID" or
+                "GRA_HTTPS_REQUIRED" or "GRA_HOST_NOT_ALLOWED" or "GRA_STAGING_HOST_REQUIRED")
+        {
+            return;
+        }
+
+        var classification = errorCode is "GRA_SERVICE_UNAVAILABLE" or "E990"
+            ? RetryFailureClassification.Temporary
+            : RetryFailureClassification.Ambiguous;
+        var retry = GraRetryJob.Schedule(
+            transaction.Id,
+            transaction.TenantId,
+            transaction.CorrelationId,
+            transaction.IdempotencyKey,
+            JsonSerializer.Serialize(invoice),
+            classification,
+            errorCode,
+            Math.Max(1, retryOptions.Value.MaximumAttempts),
+            now.AddSeconds(Math.Max(1, retryOptions.Value.InitialDelaySeconds)),
+            now);
+        dbContext.GraRetryJobs.Add(retry);
+        dbContext.AuditEvents.Add(AuditEvent.Create(
+            transaction.TenantId,
+            "retry.scheduled",
+            "gra_retry_job",
+            retry.Id.ToString(),
+            transaction.CorrelationId,
+            JsonSerializer.Serialize(new
+            {
+                transaction.Id,
+                classification = classification.ToString(),
+                errorCode
+            }),
+            now));
     }
 
     private static TransactionResult ToResult(EVatTransaction transaction)

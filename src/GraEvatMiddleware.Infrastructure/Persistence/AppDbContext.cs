@@ -1,5 +1,6 @@
 using GraEvatMiddleware.Domain.Auditing;
 using GraEvatMiddleware.Domain.Integration;
+using GraEvatMiddleware.Domain.Retry;
 using GraEvatMiddleware.Domain.Tenants;
 using GraEvatMiddleware.Domain.Transactions;
 using Microsoft.EntityFrameworkCore;
@@ -13,6 +14,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<EVatTransaction> Transactions => Set<EVatTransaction>();
     public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
     public DbSet<IntegrationExchange> IntegrationExchanges => Set<IntegrationExchange>();
+    public DbSet<GraRetryJob> GraRetryJobs => Set<GraRetryJob>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -92,6 +94,28 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.HasIndex(item => item.CorrelationId);
             entity.HasIndex(item => new { item.Operation, item.CreatedAt });
             entity.HasIndex(item => new { item.Outcome, item.CreatedAt });
+        });
+
+        modelBuilder.Entity<GraRetryJob>(entity =>
+        {
+            entity.ToTable("gra_retry_jobs");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.CorrelationId).HasMaxLength(100).IsRequired();
+            entity.Property(item => item.IdempotencyKey).HasMaxLength(128).IsRequired();
+            entity.Property(item => item.PayloadJson).HasColumnType("jsonb").IsRequired();
+            entity.Property(item => item.LastErrorCode).HasMaxLength(100);
+            entity.Property(item => item.LeaseOwner).HasMaxLength(200);
+            entity.HasIndex(item => item.TransactionId).IsUnique();
+            entity.HasIndex(item => new { item.Status, item.NextAttemptAt });
+            entity.HasIndex(item => new { item.TenantId, item.CreatedAt });
+            entity.HasOne<EVatTransaction>()
+                .WithMany()
+                .HasForeignKey(item => item.TransactionId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<Tenant>()
+                .WithMany()
+                .HasForeignKey(item => item.TenantId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
     }
 }

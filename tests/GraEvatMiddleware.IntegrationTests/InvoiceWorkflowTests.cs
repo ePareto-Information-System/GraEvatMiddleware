@@ -1,10 +1,13 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using GraEvatMiddleware.Api.Contracts;
 using GraEvatMiddleware.Application.Invoices;
 using GraEvatMiddleware.Application.Logging;
+using GraEvatMiddleware.Application.Retry;
 using GraEvatMiddleware.Application.Tenants;
 using GraEvatMiddleware.Domain.Integration;
+using GraEvatMiddleware.Domain.Retry;
 using GraEvatMiddleware.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -127,6 +130,8 @@ public sealed class InvoiceWorkflowTests(GraEvatApiFactory factory) : IClassFixt
         request.Headers.Add("X-Correlation-ID", "unauthorized-correlation");
         using var response = await client.SendAsync(request);
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("AUTHENTICATION_FAILED", problem.RootElement.GetProperty("code").GetString());
 
         await using var scope = factory.Services.CreateAsyncScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -135,6 +140,23 @@ public sealed class InvoiceWorkflowTests(GraEvatApiFactory factory) : IClassFixt
         Assert.Equal(401, log.ResponseStatusCode);
         Assert.Contains("[REDACTED]", log.RequestHeadersJson, StringComparison.Ordinal);
         Assert.DoesNotContain(invalidKey, log.RequestHeadersJson, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ValidationFailure_ReturnsStableMachineReadableCode()
+    {
+        using var client = factory.CreateClient();
+        var tenant = await RegisterTenantAsync(client);
+        var invalid = CreateInvoiceRequest("", -1m);
+        using var request = CreateAuthenticatedInvoiceRequest(
+            tenant.Credential.ApiKey,
+            "validation-error-key",
+            invalid);
+        using var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("VALIDATION_FAILED", problem.RootElement.GetProperty("code").GetString());
     }
 
     [Fact]
@@ -180,6 +202,99 @@ public sealed class InvoiceWorkflowTests(GraEvatApiFactory factory) : IClassFixt
             .ToListAsync();
         Assert.Single(outboundLogs);
         Assert.Equal(expectedOutcome, outboundLogs[0].Outcome);
+
+        var retryJobs = await dbContext.GraRetryJobs
+            .Where(item => item.TransactionId == transaction!.TransactionId)
+            .ToListAsync();
+        if (invoiceNumber.StartsWith("TIMEOUT", StringComparison.Ordinal))
+        {
+            var retryJob = Assert.Single(retryJobs);
+            Assert.Equal(RetryFailureClassification.Ambiguous, retryJob.FailureClassification);
+            Assert.Equal(RetryJobStatus.ReconciliationPending, retryJob.Status);
+        }
+        else
+        {
+            Assert.Empty(retryJobs);
+        }
+    }
+
+    [Fact]
+    public async Task AmbiguousSubmission_IsReconciledWithoutInvoiceResubmission()
+    {
+        using var client = factory.CreateClient();
+        var tenant = await RegisterTenantAsync(client);
+        const string invoiceNumber = "TIMEOUT-RECONCILE-001";
+        const string idempotencyKey = "reconcile-idempotency-key";
+        using var request = CreateAuthenticatedInvoiceRequest(
+            tenant.Credential.ApiKey, idempotencyKey, CreateInvoiceRequest(invoiceNumber, 118m));
+        using var response = await client.SendAsync(request);
+        var transaction = (await response.Content.ReadFromJsonAsync<TransactionResult>())!;
+        Assert.Equal("PendingGra", transaction.Status);
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var processor = scope.ServiceProvider.GetRequiredService<IGraRetryProcessor>();
+        var processed = await processor.ProcessDueAsync(
+            "integration-worker", DateTimeOffset.UtcNow.AddMinutes(1));
+
+        Assert.Equal(1, processed);
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var savedTransaction = await dbContext.Transactions.SingleAsync(item => item.Id == transaction.TransactionId);
+        var retryJob = await dbContext.GraRetryJobs.SingleAsync(item => item.TransactionId == transaction.TransactionId);
+        Assert.Equal("Succeeded", savedTransaction.Status.ToString());
+        Assert.Equal(RetryJobStatus.Completed, retryJob.Status);
+        var outboundOperations = await dbContext.IntegrationExchanges
+            .Where(item => item.TransactionId == transaction.TransactionId &&
+                           item.Direction == ExchangeDirection.Outbound)
+            .Select(item => item.Operation)
+            .ToListAsync();
+        Assert.Equal(2, outboundOperations.Count);
+        Assert.Contains("Invoice", outboundOperations);
+        Assert.Contains("InvoiceReconciliation", outboundOperations);
+        Assert.DoesNotContain("InvoiceRetry", outboundOperations);
+    }
+
+    [Fact]
+    public async Task TemporaryFailure_IsResubmittedOnlyAfterCallbackReportsNotFound()
+    {
+        using var client = factory.CreateClient();
+        var tenant = await RegisterTenantAsync(client);
+        using var request = CreateAuthenticatedInvoiceRequest(
+            tenant.Credential.ApiKey,
+            "temporary-retry-key",
+            CreateInvoiceRequest("TEMPORARY-RETRY-001", 118m));
+        using var response = await client.SendAsync(request);
+        var transaction = (await response.Content.ReadFromJsonAsync<TransactionResult>())!;
+        Assert.Equal("PendingGra", transaction.Status);
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var processor = scope.ServiceProvider.GetRequiredService<IGraRetryProcessor>();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var jobsToProcess = await dbContext.GraRetryJobs.CountAsync(item =>
+            item.Status == RetryJobStatus.Scheduled ||
+            item.Status == RetryJobStatus.ReconciliationPending ||
+            item.Status == RetryJobStatus.Processing);
+        var processed = 0;
+        for (var attempt = 0; attempt < jobsToProcess; attempt++)
+        {
+            processed += await processor.ProcessDueAsync(
+                "integration-worker",
+                DateTimeOffset.UtcNow.AddMinutes(1));
+        }
+
+        Assert.Equal(jobsToProcess, processed);
+        var saved = await dbContext.Transactions.SingleAsync(item => item.Id == transaction.TransactionId);
+        var retry = await dbContext.GraRetryJobs.SingleAsync(item => item.TransactionId == transaction.TransactionId);
+        Assert.True(
+            string.Equals("Succeeded", saved.Status.ToString(), StringComparison.Ordinal),
+            $"Transaction status was {saved.Status}; retry status was {retry.Status}; error was {retry.LastErrorCode}.");
+        Assert.Equal(RetryJobStatus.Completed, retry.Status);
+        var operations = await dbContext.IntegrationExchanges
+            .Where(item => item.TransactionId == transaction.TransactionId &&
+                           item.Direction == ExchangeDirection.Outbound)
+            .OrderBy(item => item.CreatedAt)
+            .Select(item => item.Operation)
+            .ToListAsync();
+        Assert.Equal(["Invoice", "InvoiceReconciliation", "InvoiceRetry"], operations);
     }
 
     [Fact]
@@ -262,7 +377,7 @@ public sealed class InvoiceWorkflowTests(GraEvatApiFactory factory) : IClassFixt
                 new InvoiceItemRequest
                 {
                     ItemCode = "ITEM-001",
-                    ItemCategory = "GENERAL",
+                    ItemCategory = string.Empty,
                     Description = "Consulting service",
                     Quantity = 1m,
                     UnitPrice = totalAmount
