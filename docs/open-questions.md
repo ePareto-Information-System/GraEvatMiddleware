@@ -4,6 +4,6 @@
 - What hosting platform and secret manager will be used?
 - What are the approved canonical request and response schemas for API Contract v1?
 - What are the authoritative tax calculation and rounding rules from the GRA workbook?
-- How is the GRA invoice callback authenticated and verified?
-- What reconciliation operation is authoritative after an ambiguous timeout?
 - What retention periods apply to transaction and audit data?
+- What database-encryption and field-encryption controls are required for persisted retry payloads?
+- What production GRA host allowlist will be approved after staging sign-off?
