@@ -13,6 +13,21 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/HealthResponse' }
+  /api/v1/health/ready:
+    get:
+      operationId: getReadiness
+      description: Checks PostgreSQL and, when enabled, the configured GRA health operation using an active tenant.
+      responses:
+        '200':
+          description: Required dependencies are ready. GRA may be intentionally disabled.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReadinessResponse' }
+        '503':
+          description: PostgreSQL is unavailable or enabled GRA integration is not ready.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReadinessResponse' }
   /api/v1/admin/tenants:
     post:
       operationId: registerTenant
@@ -204,6 +219,15 @@ components:
       required: [status, timestamp]
       properties:
         status: { type: string, example: healthy }
+        timestamp: { type: string, format: date-time }
+    ReadinessResponse:
+      type: object
+      required: [status, database, gra, timestamp]
+      properties:
+        status: { type: string, enum: [ready, not_ready] }
+        database: { type: string, enum: [healthy, unavailable] }
+        gra: { type: string, enum: [disabled, healthy, unavailable, not_configured, not_checked] }
+        graErrorCode: { type: [string, 'null'] }
         timestamp: { type: string, format: date-time }
     RegisterTenantRequest:
       type: object

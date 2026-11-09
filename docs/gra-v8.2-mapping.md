@@ -18,6 +18,8 @@ Standard-rated items use an empty `itemCategory`. The documented non-standard ca
 
 The invoice callback body contains `reference`, `invoiceNumber` and `flag`. It is used before any retry to determine whether an uncertain invoice already reached GRA. Error E701 means the invoice was not found. Error E700 means the invoice has already been signed and requires callback reconciliation. E900 and E907 are credential failures. E990 is the documented request-rate limit and is treated as temporary.
 
+The client preserves the documented GRA error code and also assigns an internal failure category. `E700` is classified as already processed and triggers reconciliation, `E701` as not found, `E900` and `E907` as authentication failures, and `E990` as rate limited. HTTP 5xx responses are temporary, malformed successful responses are ambiguous invalid responses, and other non-success responses are business rejections. Retry decisions use the category instead of depending only on individual string codes.
+
 Refunds, refund cancellation, purchases, purchase returns, purchase-return cancellation, credit/debit notes, statements, TIN validation and inventory remain outside the implemented canonical slice until their Odoo-facing schemas are approved.
 
 The taxpayer reference is GRA-facing tenant configuration. The GRA `security_key` is a secret and must never be included in this document, application settings committed to source control, logs or API responses.

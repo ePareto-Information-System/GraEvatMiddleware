@@ -59,8 +59,9 @@ When the API is started from Visual Studio in the Development environment, the b
 Keep `GraApi:Enabled` set to `false` while using this workflow. This saves the local transaction but prevents any request from being sent to GRA.
 
 1. Expand `GET /api/v1/health/live`, select **Try it out**, then select **Execute**. A working API returns HTTP `200` and `status: healthy`.
-2. Select **Authorize**. Enter the value of your `Security:AdminKey` user secret in `AdminKey`; enter the value only, without an `X-Admin-Key:` prefix.
-3. Expand `POST /api/v1/admin/tenants`, select **Try it out**, and register a local tenant with the body below. Use a new `slug` and `taxpayerReference` if you repeat this test.
+2. Expand `GET /api/v1/health/ready` and execute it. HTTP `200` confirms PostgreSQL is reachable and GRA is either intentionally disabled or healthy. HTTP `503` identifies a dependency that must be corrected before invoice traffic is accepted.
+3. Select **Authorize**. Enter the value of your `Security:AdminKey` user secret in `AdminKey`; enter the value only, without an `X-Admin-Key:` prefix.
+4. Expand `POST /api/v1/admin/tenants`, select **Try it out**, and register a local tenant with the body below. Use a new `slug` and `taxpayerReference` if you repeat this test.
 
 ```json
 {
@@ -73,8 +74,8 @@ Keep `GraApi:Enabled` set to `false` while using this workflow. This saves the l
 
 The secret name is only a reference label while GRA integration is disabled. The response contains `credential.apiKey`; copy it immediately because the application stores only its hash and cannot display that key again.
 
-4. Select **Authorize** again and enter the returned `credential.apiKey` in `TenantApiKey`; enter the key value only, without an `X-API-Key:` prefix.
-5. Expand `POST /api/v1/invoices`, select **Try it out**, set `Idempotency-Key` to a unique value such as `local-invoice-0001`, and submit the controlled invoice below.
+5. Select **Authorize** again and enter the returned `credential.apiKey` in `TenantApiKey`; enter the key value only, without an `X-API-Key:` prefix.
+6. Expand `POST /api/v1/invoices`, select **Try it out**, set `Idempotency-Key` to a unique value such as `local-invoice-0001`, and submit the controlled invoice below.
 
 ```json
 {
@@ -115,8 +116,8 @@ The secret name is only a reference label while GRA integration is disabled. The
 
 The first submission returns HTTP `201`. With GRA disabled, the transaction remains `PendingGra` with `GRA_INTEGRATION_DISABLED`; that result confirms the safety switch worked. Copy the returned `transactionId`.
 
-6. Expand `GET /api/v1/transactions/{transactionId}`, select **Try it out**, paste the transaction ID, and execute it. This confirms the transaction was persisted for the authenticated tenant.
-7. Confirm the sanitized inbound exchanges in PostgreSQL with this one-line command from PowerShell:
+7. Expand `GET /api/v1/transactions/{transactionId}`, select **Try it out**, paste the transaction ID, and execute it. This confirms the transaction was persisted for the authenticated tenant.
+8. Confirm the sanitized inbound exchanges in PostgreSQL with this one-line command from PowerShell:
 
 ```powershell
 & "C:\Program Files\PostgreSQL\18\bin\psql.exe" -h localhost -p 5434 -U gra_evat_app -d gra_evat -W -c 'SELECT "Direction", "Operation", "ResponseStatusCode", "Outcome", "ErrorCode", "CreatedAt" FROM integration_exchange_logs ORDER BY "CreatedAt" DESC LIMIT 20;'

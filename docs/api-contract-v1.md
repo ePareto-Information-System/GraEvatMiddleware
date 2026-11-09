@@ -14,6 +14,7 @@ The canonical API is exposed under `/api/v1`. It is independent of the GRA trans
 ## Initial operations
 
 - `GET /api/v1/health/live`
+- `GET /api/v1/health/ready`
 - `POST /api/v1/admin/tenants`
 - `POST /api/v1/admin/tenants/{tenantId}/credentials`
 - `POST /api/v1/admin/tenants/{tenantId}/credentials/{credentialId}/rotate`
@@ -33,6 +34,8 @@ The transaction resource may report `PendingGra` while the submission is being r
 Credential rotation atomically revokes the selected active key and returns its replacement once. Tenant termination is irreversible through the API and revokes every active credential. Audit lookup is always scoped to the tenant resolved from `X-API-Key`; the caller cannot supply another tenant identifier.
 
 Problem responses include a stable `code` and `correlationId`. Current middleware codes include `AUTHENTICATION_FAILED`, `VALIDATION_FAILED`, `RESOURCE_NOT_FOUND`, `RESOURCE_CONFLICT`, `IDEMPOTENCY_CONFLICT`, `RATE_LIMIT_EXCEEDED`, `CONFIGURATION_MISSING` and `INTERNAL_ERROR`.
+
+Liveness confirms that the middleware process can serve HTTP requests. Readiness separately verifies PostgreSQL connectivity. When GRA integration is enabled, readiness also requires an active tenant and a successful GRA health response. It returns HTTP 503 without exposing tenant references or secret names when an enabled dependency is unavailable.
 
 The machine-readable source of truth for this slice is `docs/openapi-v1.yaml`.
 
