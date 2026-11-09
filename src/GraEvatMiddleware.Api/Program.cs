@@ -14,7 +14,12 @@ using Microsoft.OpenApi;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Logging.ClearProviders();
-builder.Logging.AddConsole();
+builder.Logging.AddJsonConsole(options =>
+{
+    options.IncludeScopes = true;
+    options.TimestampFormat = "yyyy-MM-ddTHH:mm:ss.fffZ";
+    options.UseUtcTimestamp = true;
+});
 builder.Logging.AddDebug();
 
 builder.Services
@@ -135,6 +140,7 @@ if (app.Environment.IsDevelopment() || app.Environment.IsEnvironment("Testing"))
 app.UseHttpsRedirection();
 
 app.UseMiddleware<CorrelationIdMiddleware>();
+app.UseMiddleware<RequestTelemetryMiddleware>();
 app.UseMiddleware<ExchangeLoggingMiddleware>();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseRateLimiter();

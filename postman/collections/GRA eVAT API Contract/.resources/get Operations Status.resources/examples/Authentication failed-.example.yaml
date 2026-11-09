@@ -1,0 +1,25 @@
+$kind: http-example
+name: Authentication failed.
+request:
+  url: "{{baseUrl}}/api/v1/admin/operations/status"
+  method: GET
+  headers:
+    X-Admin-Key: <API Key>
+    Accept: application/json
+  body:
+    type: text
+    content: ""
+response:
+  statusCode: 401
+  statusText: Unauthorized
+  headers:
+    Content-Type: application/problem+json
+  body:
+    type: json
+    content: |-
+      {
+        "status": 401,
+        "title": "Administrative authentication failed.",
+        "code": "ADMIN_AUTHENTICATION_FAILED"
+      }
+order: 2000

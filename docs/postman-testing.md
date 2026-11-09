@@ -2,7 +2,7 @@
 
 Two local collections are maintained:
 
-- `GRA eVAT API Contract` is generated from `docs/openapi-v1.yaml` and contains all 13 middleware operations and response examples.
+- `GRA eVAT API Contract` is generated from `docs/openapi-v1.yaml` and contains all 14 middleware operations and response examples.
 - `GRA eVAT Local Workflow` is an ordered nine-request regression workflow covering liveness, readiness, tenant registration, invoice submission, idempotent replay, changed-payload rejection, transaction lookup, tenant-scoped audit lookup and missing-key authentication.
 
 The local workflow expects the API at `http://localhost:5189`, PostgreSQL to be available, and `GraApi:Enabled` to remain `false`. It creates unique tenant and invoice values on every run. It does not call GRA.

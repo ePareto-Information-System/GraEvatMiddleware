@@ -201,11 +201,16 @@ Configure capture in `appsettings.json` or environment-specific configuration:
   "Enabled": true,
   "CaptureBodies": true,
   "MaximumBodyCharacters": 65536,
-  "RetentionDays": 90
+  "RetentionDays": 90,
+  "RetentionCleanupEnabled": true,
+  "RetentionCleanupInitialDelaySeconds": 60,
+  "RetentionCleanupIntervalMinutes": 1440
 }
 ```
 
-Set `CaptureBodies` to `false` to retain exchange metadata without bodies. Set `Enabled` to `false` to disable exchange persistence. Retention is exposed through an application service and is not scheduled automatically.
+Set `CaptureBodies` to `false` to retain exchange metadata without bodies. Set `Enabled` to `false` to disable exchange persistence. The hosted retention worker deletes records older than `RetentionDays` on the configured schedule. Set `RetentionCleanupEnabled` to `false` only when an approved external retention process owns deletion.
+
+Administrative operational monitoring is available at `GET /api/v1/admin/operations/status` using `X-Admin-Key`. It reports aggregate request, pending-transaction and retry-queue signals without exposing tenant payloads or credentials. Console logs use structured JSON and include the correlation ID, HTTP method, path, status and elapsed time.
 
 Example troubleshooting query:
 

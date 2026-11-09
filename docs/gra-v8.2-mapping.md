@@ -1,6 +1,6 @@
 # GRA E-VAT Version 8.2 Mapping
 
-Status: Invoice staging mapping implemented; other operations remain draft
+Status: 3 of 12 documented GRA operation groups implemented; nine remain draft
 
 Source: https://documenter.getpostman.com/view/29809098/2sBXVeGCzK
 
@@ -9,6 +9,23 @@ The documented staging host is `vsdcstaging.vat-gh.com`. The implemented operati
 - `POST /vsdc/api/v1/taxpayer/{reference}/invoice`
 - `GET /vsdc/api/v1/taxpayer/{reference}/health`
 - `POST /vsdc/api/v1/taxpayer/{reference}/invoice/callback`
+
+| GRA v8.2 operation group | Middleware status |
+| --- | --- |
+| Invoice | Implemented |
+| Invoice refunds | Not implemented |
+| Refund cancellation | Not implemented |
+| Purchase | Not implemented |
+| Purchase return | Not implemented |
+| Purchase return cancellation | Not implemented |
+| Credit note / debit note | Not implemented |
+| Statement of account | Not implemented |
+| Health check | Implemented |
+| TIN validator | Not implemented |
+| Inventory | Not implemented |
+| Invoice callback | Implemented |
+
+This GRA-facing count is separate from the canonical middleware API, which currently exposes 14 operations to ERP clients and administrators. A GRA operation is added only after its canonical middleware schema, permissions, idempotency behaviour and response mapping have been agreed; the external GRA transport is not exposed directly to callers.
 
 All operations authenticate with the `security_key` request header. The taxpayer reference in the URL and the key must belong together.
 
