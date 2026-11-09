@@ -1,0 +1,20 @@
+$kind: http-request
+description: ""
+url: "{{baseUrl}}/api/v1/transactions/:transactionId"
+method: GET
+headers:
+  Accept: application/json
+pathVariables:
+  - key: transactionId
+    value: 40615893-5fb7-b2e1-835d-8fcbba8d3a00
+    disabled: false
+    description: "(Required) "
+auth:
+  type: apikey
+  credentials:
+    key: X-API-Key
+    value: "{{apiKey}}"
+    in: header
+settings: {}
+examples: ./.resources/get Transaction.resources/examples
+order: 12000

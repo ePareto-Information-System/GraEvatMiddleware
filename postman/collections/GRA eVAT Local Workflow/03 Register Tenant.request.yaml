@@ -1,0 +1,30 @@
+$kind: http-request
+method: POST
+url: '{{baseUrl}}/api/v1/admin/tenants'
+order: 3000
+headers:
+  - { key: X-Admin-Key, value: '{{adminKey}}' }
+  - { key: Content-Type, value: application/json }
+body:
+  type: json
+  content: |-
+    {"name":"Postman Tenant {{runSuffix}}","slug":"postman-{{runSuffix}}","taxpayerReference":"PM-{{runSuffix}}","graSecurityKeySecretName":"postman-gra-secret-{{runSuffix}}"}
+scripts:
+  - type: beforeRequest
+    language: text/javascript
+    code: |-
+      const suffix = Date.now().toString(36);
+      pm.collectionVariables.set('runSuffix', suffix);
+      pm.collectionVariables.set('invoiceNumber', `PM-INV-${suffix}`);
+      pm.collectionVariables.set('idempotencyKey', `postman-invoice-${suffix}`);
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('Tenant registration returns HTTP 201', () => pm.response.to.have.status(201));
+      const body = pm.response.json();
+      pm.test('Registration returns an API key once', function () {
+        pm.expect(body.tenantId).to.be.a('string').and.not.empty;
+        pm.expect(body.credential.apiKey).to.be.a('string').and.not.empty;
+      });
+      pm.collectionVariables.set('tenantId', body.tenantId);
+      pm.collectionVariables.set('tenantApiKey', body.credential.apiKey);

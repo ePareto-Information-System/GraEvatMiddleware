@@ -8,3 +8,5 @@ coverage/
 .env
 appsettings.Local.json
 secrets.json
+postman/environments/*.private.environment.yaml
+postman/reports/

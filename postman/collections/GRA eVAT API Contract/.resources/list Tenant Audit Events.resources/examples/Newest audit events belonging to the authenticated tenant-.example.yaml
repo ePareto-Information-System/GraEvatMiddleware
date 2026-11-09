@@ -1,0 +1,45 @@
+$kind: http-example
+name: Newest audit events belonging to the authenticated tenant.
+request:
+  url: "{{baseUrl}}/api/v1/audit?limit=50"
+  method: GET
+  headers:
+    - key: X-API-Key
+      value: <API Key>
+      description: "Added as a part of security scheme: apikey"
+    - key: Accept
+      value: application/json
+  queryParams:
+    limit: "50"
+  body:
+    type: text
+    content: ""
+response:
+  statusCode: 200
+  statusText: OK
+  headers:
+    Content-Type: application/json
+  body:
+    type: json
+    content: |-
+      [
+        {
+          "id": "5e877a89-eb77-834f-d4e2-80486a660ef1",
+          "tenantId": "47481e62-0a05-92bc-fbeb-1860b8813178",
+          "action": "string",
+          "resourceType": "string",
+          "resourceId": "string",
+          "correlationId": "string",
+          "createdAt": "2017-01-04T14:25:11.038Z"
+        },
+        {
+          "id": "e142bca1-dd14-f8cf-bb74-a6d8ab587e50",
+          "tenantId": "3406e521-e4a1-62e6-a109-182c6a91a25e",
+          "action": "string",
+          "resourceType": "string",
+          "resourceId": "string",
+          "correlationId": "string",
+          "createdAt": "1990-07-22T07:03:55.614Z"
+        }
+      ]
+order: 1000

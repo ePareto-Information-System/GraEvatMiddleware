@@ -1,0 +1,9 @@
+$kind: http-request
+description: ""
+url: "{{baseUrl}}/api/v1/health/live"
+method: GET
+headers:
+  Accept: application/json
+settings: {}
+examples: ./.resources/get Liveness.resources/examples
+order: 1000

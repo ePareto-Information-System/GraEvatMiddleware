@@ -1,0 +1,26 @@
+$kind: http-example
+name: Required dependencies are ready. GRA may be intentionally disabled.
+request:
+  url: "{{baseUrl}}/api/v1/health/ready"
+  method: GET
+  headers:
+    Accept: application/json
+  body:
+    type: text
+    content: ""
+response:
+  statusCode: 200
+  statusText: OK
+  headers:
+    Content-Type: application/json
+  body:
+    type: json
+    content: |-
+      {
+        "status": "not_ready",
+        "database": "healthy",
+        "gra": "not_configured",
+        "timestamp": "2018-10-08T06:36:38.468Z",
+        "graErrorCode": "string"
+      }
+order: 1000

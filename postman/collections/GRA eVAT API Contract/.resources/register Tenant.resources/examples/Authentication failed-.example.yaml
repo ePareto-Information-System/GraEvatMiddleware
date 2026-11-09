@@ -1,0 +1,27 @@
+$kind: http-example
+name: Authentication failed.
+request:
+  url: "{{baseUrl}}/api/v1/admin/tenants"
+  method: POST
+  headers:
+    - key: X-Admin-Key
+      value: <API Key>
+      description: "Added as a part of security scheme: apikey"
+  body:
+    type: json
+    content: |-
+      {
+        "name": "string",
+        "slug": "3fv07v75lycv8o0xw9bugo4en8med2iucgh",
+        "taxpayerReference": "string",
+        "graSecurityKeySecretName": "string"
+      }
+response:
+  statusCode: 401
+  statusText: Unauthorized
+  headers:
+    Content-Type: text/plain
+  body:
+    type: text
+    content: ""
+order: 2000

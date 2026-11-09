@@ -1,0 +1,17 @@
+$kind: http-request
+description: ""
+url: "{{baseUrl}}/api/v1/audit?limit=50"
+method: GET
+headers:
+  Accept: application/json
+queryParams:
+  limit: "50"
+auth:
+  type: apikey
+  credentials:
+    key: X-API-Key
+    value: "{{apiKey}}"
+    in: header
+settings: {}
+examples: ./.resources/list Tenant Audit Events.resources/examples
+order: 13000

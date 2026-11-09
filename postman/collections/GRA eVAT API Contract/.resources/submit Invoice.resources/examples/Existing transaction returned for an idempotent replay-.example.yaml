@@ -1,0 +1,71 @@
+$kind: http-example
+name: Existing transaction returned for an idempotent replay.
+request:
+  url: "{{baseUrl}}/api/v1/invoices"
+  method: POST
+  headers:
+    - key: X-API-Key
+      value: <API Key>
+      description: "Added as a part of security scheme: apikey"
+    - key: Idempotency-Key
+      value: stringstring
+      disabled: false
+      description: "(Required) "
+    - key: Accept
+      value: application/json
+  body:
+    type: json
+    content: |-
+      {
+        "invoiceNumber": "string",
+        "currency": "USD",
+        "exchangeRate": 6078.241774995578,
+        "calculationType": "EXCLUSIVE",
+        "transactionDate": "1952-11-30",
+        "totalVat": 36.83560062199831,
+        "totalLevy": 5746.131974738091,
+        "totalAmount": 13.435441069304943,
+        "businessPartnerName": "string",
+        "businessPartnerTin": "st",
+        "saleType": "NORMAL",
+        "items": [
+          {
+            "itemCode": "string",
+            "itemCategory": "TRSM",
+            "description": "string",
+            "quantity": 5215.804502791725,
+            "unitPrice": 4571.23733125627,
+            "levyAmountA": 9455.21618006751,
+            "levyAmountB": 457.4894136749208,
+            "levyAmountC": 1428.4362643957138,
+            "levyAmountD": 8254.734915681183,
+            "levyAmountE": 3544.6172300726175,
+            "discountAmount": 0,
+            "exciseAmount": 0,
+            "batchCode": "string",
+            "expireDate": "1997-02-06"
+          }
+        ],
+        "discountType": "GENERAL",
+        "discountAmount": 0,
+        "groupReferenceId": "string"
+      }
+response:
+  statusCode: 200
+  statusText: OK
+  headers:
+    Content-Type: application/json
+  body:
+    type: json
+    content: |-
+      {
+        "transactionId": "34cbc9ab-7828-23e1-b8bd-38006e88f21d",
+        "invoiceNumber": "string",
+        "status": "Submitting",
+        "correlationId": "string",
+        "createdAt": "2008-03-02T11:55:10.450Z",
+        "updatedAt": "2020-04-20T10:11:10.805Z",
+        "externalReference": "string",
+        "errorCode": "string"
+      }
+order: 1000
