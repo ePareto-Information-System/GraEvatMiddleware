@@ -1,0 +1,91 @@
+name: Continuous Integration
+
+on:
+  push:
+    branches:
+      - feature/core-evat-middleware
+      - 'feat/**'
+      - 'fix/**'
+  pull_request:
+    branches:
+      - feature/core-evat-middleware
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  dotnet:
+    name: Build and test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore dependencies
+        run: dotnet restore GraEvatMiddleware.slnx
+
+      - name: Verify formatting
+        run: dotnet format GraEvatMiddleware.slnx --verify-no-changes --no-restore
+
+      - name: Build release configuration
+        run: dotnet build GraEvatMiddleware.slnx --configuration Release --no-restore
+
+      - name: Run automated tests
+        run: dotnet test GraEvatMiddleware.slnx --configuration Release --no-build --verbosity minimal --logger "trx;LogFileName=test-results.trx"
+
+      - name: Report vulnerable dependencies
+        run: dotnet list GraEvatMiddleware.slnx package --vulnerable --include-transitive
+
+      - name: Upload test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dotnet-test-results
+          path: '**/TestResults/*.trx'
+          if-no-files-found: error
+
+  api-contract:
+    name: Validate API contract
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Lint OpenAPI specification
+        uses: postmanlabs/postman-cli-action@v1
+        with:
+          command: 'spec lint ./docs/openapi-v1.yaml --issueType syntax --no-report-events'
+
+      - name: Lint contract collection
+        uses: postmanlabs/postman-cli-action@v1
+        with:
+          command: 'collection lint "./postman/collections/GRA eVAT API Contract" --fail-severity warning'
+
+      - name: Lint local workflow
+        uses: postmanlabs/postman-cli-action@v1
+        with:
+          command: 'collection lint "./postman/collections/GRA eVAT Local Workflow" --fail-severity warning'
+
+      - name: Lint local environment
+        uses: postmanlabs/postman-cli-action@v1
+        with:
+          command: 'environment lint "./postman/environments/Local.environment.yaml" --fail-severity warning'
+
+  dependency-review:
+    name: Review dependency changes
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Reject vulnerable dependency changes
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
