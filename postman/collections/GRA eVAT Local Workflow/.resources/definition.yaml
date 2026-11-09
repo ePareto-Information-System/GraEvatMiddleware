@@ -1,0 +1,11 @@
+$kind: collection
+name: GRA eVAT Local Workflow
+description: Reusable local regression workflow. It calls only the middleware and never enables the real GRA service.
+variables:
+  - { key: baseUrl, value: 'http://localhost:5189' }
+  - { key: adminKey, value: '' }
+  - { key: tenantApiKey, value: '' }
+  - { key: tenantId, value: '' }
+  - { key: transactionId, value: '' }
+  - { key: invoiceNumber, value: '' }
+  - { key: idempotencyKey, value: '' }

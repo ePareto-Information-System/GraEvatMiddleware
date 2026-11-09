@@ -1,0 +1,5 @@
+$kind: collection
+description: Canonical multi-tenant API used by Odoo and other ERP clients.
+variables:
+  baseUrl: /
+  apiKey: ""

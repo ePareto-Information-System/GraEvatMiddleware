@@ -171,6 +171,8 @@ The canonical contract is documented in [docs/api-contract-v1.md](docs/api-contr
 
 Operational guidance is in [docs/operations-runbook.md](docs/operations-runbook.md), [docs/tenant-onboarding.md](docs/tenant-onboarding.md), [docs/threat-model.md](docs/threat-model.md) and [docs/test-evidence.md](docs/test-evidence.md).
 
+Reusable API checks are documented in [docs/postman-testing.md](docs/postman-testing.md). The isolated PostgreSQL concurrency suite is documented in [docs/postgresql-concurrency-testing.md](docs/postgresql-concurrency-testing.md).
+
 ## Rate limiting
 
 Rate limiting is enabled by default and configured without code changes:

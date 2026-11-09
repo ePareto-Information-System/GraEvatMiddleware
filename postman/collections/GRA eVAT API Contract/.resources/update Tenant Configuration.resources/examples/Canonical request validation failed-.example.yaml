@@ -1,0 +1,30 @@
+$kind: http-example
+name: Canonical request validation failed.
+request:
+  url: "{{baseUrl}}/api/v1/admin/tenants/:tenantId/configuration"
+  method: PUT
+  headers:
+    - key: X-Admin-Key
+      value: <API Key>
+      description: "Added as a part of security scheme: apikey"
+  pathVariables:
+    - key: tenantId
+      value: 40615893-5fb7-b2e1-835d-8fcbba8d3a00
+      disabled: false
+      description: "(Required) "
+  body:
+    type: json
+    content: |-
+      {
+        "taxpayerReference": "string",
+        "graSecurityKeySecretName": "string"
+      }
+response:
+  statusCode: 422
+  statusText: Unprocessable Entity (WebDAV) (RFC 4918)
+  headers:
+    Content-Type: text/plain
+  body:
+    type: text
+    content: ""
+order: 5000

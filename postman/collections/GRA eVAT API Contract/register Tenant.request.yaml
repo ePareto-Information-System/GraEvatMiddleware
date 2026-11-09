@@ -1,0 +1,25 @@
+$kind: http-request
+description: ""
+url: "{{baseUrl}}/api/v1/admin/tenants"
+method: POST
+headers:
+  Content-Type: application/json
+  Accept: application/json
+body:
+  type: json
+  content: |-
+    {
+      "name": "string",
+      "slug": "3fv07v75lycv8o0xw9bugo4en8med2iucgh",
+      "taxpayerReference": "string",
+      "graSecurityKeySecretName": "string"
+    }
+auth:
+  type: apikey
+  credentials:
+    key: X-Admin-Key
+    value: "{{apiKey}}"
+    in: header
+settings: {}
+examples: ./.resources/register Tenant.resources/examples
+order: 3000

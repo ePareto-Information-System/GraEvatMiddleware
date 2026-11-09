@@ -1,0 +1,10 @@
+$kind: http-request
+method: GET
+url: '{{baseUrl}}/api/v1/health/live'
+order: 1000
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('Liveness returns HTTP 200', () => pm.response.to.have.status(200));
+      pm.test('Liveness reports healthy', () => pm.expect(pm.response.json().status).to.eql('healthy'));

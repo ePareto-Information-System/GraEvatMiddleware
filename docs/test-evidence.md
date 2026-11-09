@@ -22,13 +22,15 @@ Ordinary test runs use an in-memory database and a controlled GRA substitute. Th
 - Startup validation for administrative keys, API-key pepper and enabled GRA settings
 - Liveness and dependency-readiness responses
 - Architecture dependency boundary
+- PostgreSQL-only concurrency checks for duplicate submission, retry-worker claiming and expired-lease recovery
+- Postman contract and local workflow linting for all 13 operations and nine reusable regression requests
 
-The current ordinary suite contains 55 passing tests: 32 unit tests, 22 integration tests and one architecture test. The separate real GRA staging test remains skipped unless explicitly enabled with approved staging configuration.
+The current ordinary suite contains 55 passing tests: 32 unit tests, 22 integration tests and one architecture test. Three additional PostgreSQL concurrency tests are gated by an isolated test-database connection string. The separate real GRA staging test remains skipped unless explicitly enabled with approved staging configuration.
 
 ## Manual evidence still required
 
 - Odoo to middleware to GRA to Odoo end-to-end validation
-- PostgreSQL multi-instance retry concurrency and representative load testing
+- Representative PostgreSQL load and endurance testing beyond the implemented concurrency checks
 - Backup restoration and disaster-recovery exercise
 - Production hosting, proxy and TLS validation
 - Vulnerability assessment and penetration testing
