@@ -173,10 +173,6 @@ Operational guidance is in [docs/operations-runbook.md](docs/operations-runbook.
 
 Reusable API checks are documented in [docs/postman-testing.md](docs/postman-testing.md). The isolated PostgreSQL concurrency suite is documented in [docs/postgresql-concurrency-testing.md](docs/postgresql-concurrency-testing.md).
 
-## Continuous integration
-
-The GitHub Actions workflow builds the .NET 10 solution, verifies formatting, runs the automated tests, checks NuGet dependencies, validates pull-request dependency changes and lints the OpenAPI specification plus both Postman collections. Real GRA staging calls and isolated PostgreSQL concurrency tests remain explicitly gated and are never enabled by the CI workflow.
-
 ## Rate limiting
 
 Rate limiting is enabled by default and configured without code changes:
