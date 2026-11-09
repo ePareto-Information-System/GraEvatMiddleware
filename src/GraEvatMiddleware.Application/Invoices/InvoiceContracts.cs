@@ -1,3 +1,5 @@
+using GraEvatMiddleware.Domain.Transactions;
+
 namespace GraEvatMiddleware.Application.Invoices;
 
 public sealed record InvoiceCommand(
@@ -15,7 +17,8 @@ public sealed record InvoiceCommand(
     string? DiscountType,
     decimal DiscountAmount,
     string? GroupReferenceId,
-    IReadOnlyList<InvoiceItemCommand> Items);
+    IReadOnlyList<InvoiceItemCommand> Items,
+    string? Reference = null);
 
 public sealed record InvoiceItemCommand(
     string ItemCode,
@@ -34,6 +37,30 @@ public sealed record InvoiceItemCommand(
     DateOnly? ExpireDate);
 
 public sealed record SubmitInvoiceCommand(Guid TenantId, string IdempotencyKey, string CorrelationId, InvoiceCommand Invoice);
+
+public sealed record SubmitFiscalDocumentCommand(
+    Guid TenantId,
+    TransactionOperation Operation,
+    string GraFlag,
+    string IdempotencyKey,
+    string CorrelationId,
+    InvoiceCommand Document);
+
+public sealed record CancellationCommand(
+    string InvoiceNumber,
+    string Reference,
+    DateTimeOffset TransactionDate,
+    decimal TotalAmount);
+
+public sealed record SubmitCancellationCommand(
+    Guid TenantId,
+    TransactionOperation Operation,
+    string GraFlag,
+    string IdempotencyKey,
+    string CorrelationId,
+    CancellationCommand Cancellation);
+
+public sealed record FiscalRetryPayload(string GraFlag, InvoiceCommand Document);
 
 public sealed record InvoiceSubmissionResult(TransactionResult Transaction, bool IsReplay);
 

@@ -75,6 +75,22 @@ internal sealed class SuccessfulGraEvatClient(
     IIntegrationExchangeWriter writer,
     IExchangeContentSanitizer sanitizer) : IGraEvatClient
 {
+    public async Task<GraSubmissionResult> SubmitCancellationAsync(
+        GraCancellationSubmission submission,
+        CancellationToken cancellationToken = default)
+    {
+        await writer.WriteAsync(new IntegrationExchangeRecord(
+            submission.TenantId, submission.TransactionId, submission.CorrelationId,
+            submission.IdempotencyKey, ExchangeDirection.Outbound, "Middleware", "GRA",
+            submission.Operation, "POST", "/vsdc/api/v1/taxpayer/test/cancellation",
+            sanitizer.SanitizeHeaders(new Dictionary<string, string[]> { ["security_key"] = ["test-secret"] }),
+            sanitizer.SanitizeBody(System.Text.Json.JsonSerializer.Serialize(submission.Cancellation),
+                "application/json", 65_536).Content,
+            false, 200, "{}", null, false, 1, 1, ExchangeOutcome.Succeeded,
+            null, DateTimeOffset.UtcNow), cancellationToken);
+        return new GraSubmissionResult(true, false, false, submission.Cancellation.Reference, null);
+    }
+
     public async Task<GraSubmissionResult> SubmitInvoiceAsync(
         GraInvoiceSubmission submission,
         CancellationToken cancellationToken = default)
@@ -82,7 +98,7 @@ internal sealed class SuccessfulGraEvatClient(
         var isRejected = submission.Invoice.InvoiceNumber.StartsWith("REJECT", StringComparison.Ordinal);
         var isCommunicationFailure = submission.Invoice.InvoiceNumber.StartsWith("TIMEOUT", StringComparison.Ordinal);
         var isTemporary = submission.Invoice.InvoiceNumber.StartsWith("TEMPORARY", StringComparison.Ordinal) &&
-            submission.Operation != "InvoiceRetry";
+            !submission.Operation.EndsWith("Retry", StringComparison.Ordinal);
         var errorCode = isRejected ? "GRA_BUSINESS_REJECTION" :
             isCommunicationFailure ? "GRA_COMMUNICATION_STATUS_UNKNOWN" :
             isTemporary ? "E990" : null;

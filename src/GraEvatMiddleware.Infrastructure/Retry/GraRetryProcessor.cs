@@ -111,16 +111,19 @@ internal sealed class GraRetryProcessor(
 
         try
         {
+            var retryPayload = DeserializeRetryPayload(job.PayloadJson);
             var reconciliation = await graClient.ReconcileInvoiceAsync(
                 new GraInvoiceReconciliation(
                     transaction.Id,
                     tenant.Id,
                     job.CorrelationId,
                     job.IdempotencyKey,
-                    "InvoiceReconciliation",
+                    GetOperationName(transaction.Operation, "Reconciliation"),
                     tenant.TaxpayerReference,
                     tenant.GraSecurityKeySecretName,
-                    transaction.InvoiceNumber),
+                    transaction.InvoiceNumber,
+                    retryPayload.GraFlag,
+                    retryPayload.Document.Reference),
                 cancellationToken);
 
             if (reconciliation.IsFound)
@@ -165,8 +168,8 @@ internal sealed class GraRetryProcessor(
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
-        var invoice = JsonSerializer.Deserialize<InvoiceCommand>(job.PayloadJson)
-            ?? throw new InvalidOperationException("The persisted retry payload is invalid.");
+        var retryPayload = DeserializeRetryPayload(job.PayloadJson);
+        var invoice = retryPayload.Document;
         transaction.MarkRetrying(now);
         AddAudit(job, "retry.submitting", now);
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -179,10 +182,11 @@ internal sealed class GraRetryProcessor(
                     job.TenantId,
                     job.CorrelationId,
                     job.IdempotencyKey,
-                    "InvoiceRetry",
+                    GetOperationName(transaction.Operation, "Retry"),
                     taxpayerReference,
                     secretName,
-                    invoice),
+                    invoice,
+                    retryPayload.GraFlag),
                 cancellationToken);
             var completedAt = DateTimeOffset.UtcNow;
             if (result.IsSuccessful)
@@ -214,6 +218,24 @@ internal sealed class GraRetryProcessor(
             RescheduleOrExhaust(job, "GRA_COMMUNICATION_STATUS_UNKNOWN", DateTimeOffset.UtcNow);
         }
     }
+
+    private static FiscalRetryPayload DeserializeRetryPayload(string payloadJson)
+    {
+        using var json = JsonDocument.Parse(payloadJson);
+        if (json.RootElement.TryGetProperty(nameof(FiscalRetryPayload.Document), out _))
+        {
+            return JsonSerializer.Deserialize<FiscalRetryPayload>(payloadJson)
+                ?? throw new InvalidOperationException("The persisted retry payload is invalid.");
+        }
+
+        var legacyInvoice = JsonSerializer.Deserialize<InvoiceCommand>(payloadJson)
+            ?? throw new InvalidOperationException("The persisted retry payload is invalid.");
+        return new FiscalRetryPayload("INVOICE", legacyInvoice);
+    }
+
+    private static string GetOperationName(
+        GraEvatMiddleware.Domain.Transactions.TransactionOperation operation,
+        string suffix) => $"{operation}{suffix}";
 
     private void RescheduleOrExhaust(GraRetryJob job, string errorCode, DateTimeOffset now)
     {

@@ -65,6 +65,30 @@ public sealed class EVatTransaction
         string correlationId,
         DateTimeOffset now)
     {
+        return Create(
+            tenantId,
+            TransactionOperation.Invoice,
+            invoiceNumber,
+            idempotencyKey,
+            requestHash,
+            correlationId,
+            now);
+    }
+
+    public static EVatTransaction Create(
+        Guid tenantId,
+        TransactionOperation operation,
+        string invoiceNumber,
+        string idempotencyKey,
+        string requestHash,
+        string correlationId,
+        DateTimeOffset now)
+    {
+        if (!Enum.IsDefined(operation))
+        {
+            throw new DomainValidationException("Transaction operation is invalid.");
+        }
+
         if (string.IsNullOrWhiteSpace(invoiceNumber))
         {
             throw new DomainValidationException("Invoice number is required.");
@@ -78,7 +102,7 @@ public sealed class EVatTransaction
         return new EVatTransaction(
             Guid.NewGuid(),
             tenantId,
-            TransactionOperation.Invoice,
+            operation,
             invoiceNumber,
             idempotencyKey,
             requestHash,

@@ -8,6 +8,10 @@ public interface IGraEvatClient
         GraInvoiceSubmission submission,
         CancellationToken cancellationToken = default);
 
+    Task<GraSubmissionResult> SubmitCancellationAsync(
+        GraCancellationSubmission submission,
+        CancellationToken cancellationToken = default);
+
     Task<GraReconciliationResult> ReconcileInvoiceAsync(
         GraInvoiceReconciliation reconciliation,
         CancellationToken cancellationToken = default);
@@ -25,7 +29,19 @@ public sealed record GraInvoiceSubmission(
     string Operation,
     string TaxpayerReference,
     string SecurityKeySecretName,
-    InvoiceCommand Invoice);
+    InvoiceCommand Invoice,
+    string GraFlag = "INVOICE");
+
+public sealed record GraCancellationSubmission(
+    Guid TransactionId,
+    Guid TenantId,
+    string CorrelationId,
+    string IdempotencyKey,
+    string Operation,
+    string TaxpayerReference,
+    string SecurityKeySecretName,
+    CancellationCommand Cancellation,
+    string GraFlag);
 
 public sealed record GraSubmissionResult(
     bool IsSuccessful,
@@ -43,7 +59,9 @@ public sealed record GraInvoiceReconciliation(
     string Operation,
     string TaxpayerReference,
     string SecurityKeySecretName,
-    string InvoiceNumber);
+    string InvoiceNumber,
+    string GraFlag = "INVOICE",
+    string? Reference = null);
 
 public sealed record GraReconciliationResult(
     bool IsFound,
