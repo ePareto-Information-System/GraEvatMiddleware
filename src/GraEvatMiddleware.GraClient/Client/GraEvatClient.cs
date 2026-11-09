@@ -19,7 +19,6 @@ public sealed class GraEvatClient(
     IOptions<GraApiOptions> options,
     IOptions<ExchangeLoggingOptions> exchangeOptions) : IGraEvatClient
 {
-    private const string DocumentedStagingHost = "vsdcstaging.vat-gh.com";
     private readonly GraApiOptions _options = options.Value;
 
     public async Task<GraSubmissionResult> SubmitInvoiceAsync(
@@ -33,34 +32,33 @@ public sealed class GraEvatClient(
                 IsPending: true,
                 IsRejected: false,
                 ExternalReference: null,
-                ErrorCode: "GRA_INTEGRATION_DISABLED");
+                ErrorCode: "GRA_INTEGRATION_DISABLED",
+                FailureKind: GraFailureKind.Configuration);
         }
 
         if (!string.Equals(_options.Environment, "Staging", StringComparison.OrdinalIgnoreCase))
         {
-            return new GraSubmissionResult(false, true, false, null, "GRA_ENVIRONMENT_NOT_ALLOWED");
+            return new GraSubmissionResult(false, true, false, null, "GRA_ENVIRONMENT_NOT_ALLOWED", GraFailureKind.Configuration);
         }
 
         if (!Uri.TryCreate(_options.BaseUrl, UriKind.Absolute, out var baseUri))
         {
-            return new GraSubmissionResult(false, true, false, null, "GRA_BASE_URL_INVALID");
+            return new GraSubmissionResult(false, true, false, null, "GRA_BASE_URL_INVALID", GraFailureKind.Configuration);
         }
 
         if (!string.Equals(baseUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
         {
-            return new GraSubmissionResult(false, true, false, null, "GRA_HTTPS_REQUIRED");
+            return new GraSubmissionResult(false, true, false, null, "GRA_HTTPS_REQUIRED", GraFailureKind.Configuration);
         }
 
         if (!_options.AllowedHosts.Contains(baseUri.Host, StringComparer.OrdinalIgnoreCase))
         {
-            return new GraSubmissionResult(false, true, false, null, "GRA_HOST_NOT_ALLOWED");
+            return new GraSubmissionResult(false, true, false, null, "GRA_HOST_NOT_ALLOWED", GraFailureKind.Configuration);
         }
 
-        if (!string.Equals(baseUri.Host, DocumentedStagingHost, StringComparison.OrdinalIgnoreCase) &&
-            !baseUri.Host.EndsWith(".test", StringComparison.OrdinalIgnoreCase) &&
-            !baseUri.Host.EndsWith(".example", StringComparison.OrdinalIgnoreCase))
+        if (!GraApiOptionsValidator.IsApprovedStagingHost(baseUri.Host))
         {
-            return new GraSubmissionResult(false, true, false, null, "GRA_STAGING_HOST_REQUIRED");
+            return new GraSubmissionResult(false, true, false, null, "GRA_STAGING_HOST_REQUIRED", GraFailureKind.Configuration);
         }
 
         var securityKey = await secretProvider.GetSecretAsync(
@@ -68,7 +66,7 @@ public sealed class GraEvatClient(
             cancellationToken);
         if (string.IsNullOrWhiteSpace(securityKey))
         {
-            return new GraSubmissionResult(false, true, false, null, "GRA_SECRET_NOT_CONFIGURED");
+            return new GraSubmissionResult(false, true, false, null, "GRA_SECRET_NOT_CONFIGURED", GraFailureKind.Configuration);
         }
 
         var relativeUrl = $"vsdc/api/v1/taxpayer/{Uri.EscapeDataString(submission.TaxpayerReference)}/invoice";
@@ -122,7 +120,7 @@ public sealed class GraEvatClient(
         var configurationError = ValidateConfiguration(out var baseUri);
         if (configurationError is not null)
         {
-            return new GraReconciliationResult(false, false, true, false, null, configurationError);
+            return new GraReconciliationResult(false, false, true, false, null, configurationError, GraFailureKind.Configuration);
         }
 
         var securityKey = await secretProvider.GetSecretAsync(
@@ -130,7 +128,7 @@ public sealed class GraEvatClient(
             cancellationToken);
         if (string.IsNullOrWhiteSpace(securityKey))
         {
-            return new GraReconciliationResult(false, false, true, false, null, "GRA_SECRET_NOT_CONFIGURED");
+            return new GraReconciliationResult(false, false, true, false, null, "GRA_SECRET_NOT_CONFIGURED", GraFailureKind.Configuration);
         }
 
         var relativeUrl = $"vsdc/api/v1/taxpayer/{Uri.EscapeDataString(reconciliation.TaxpayerReference)}/invoice/callback";
@@ -249,9 +247,7 @@ public sealed class GraEvatClient(
             return "GRA_HOST_NOT_ALLOWED";
         }
 
-        return string.Equals(baseUri.Host, DocumentedStagingHost, StringComparison.OrdinalIgnoreCase) ||
-               baseUri.Host.EndsWith(".test", StringComparison.OrdinalIgnoreCase) ||
-               baseUri.Host.EndsWith(".example", StringComparison.OrdinalIgnoreCase)
+        return GraApiOptionsValidator.IsApprovedStagingHost(baseUri.Host)
             ? null
             : "GRA_STAGING_HOST_REQUIRED";
     }
@@ -260,25 +256,34 @@ public sealed class GraEvatClient(
     {
         if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
         {
-            return new GraSubmissionResult(false, false, true, null, "GRA_AUTHENTICATION_FAILED");
+            return new GraSubmissionResult(false, false, true, null, "GRA_AUTHENTICATION_FAILED", GraFailureKind.Authentication);
         }
 
         var errorCode = GetErrorCode(responseBody);
-        if ((int)response.StatusCode >= 500 || string.Equals(errorCode, "E990", StringComparison.OrdinalIgnoreCase))
+        var failureKind = ClassifyFailure(response.StatusCode, errorCode);
+        if (failureKind == GraFailureKind.Authentication)
         {
-            return new GraSubmissionResult(false, true, false, null, errorCode ?? "GRA_SERVICE_UNAVAILABLE");
+            return new GraSubmissionResult(false, false, true, null, errorCode!, failureKind);
+        }
+
+        if (failureKind is GraFailureKind.RateLimited or GraFailureKind.Temporary)
+        {
+            var normalizedCode = errorCode ?? (failureKind == GraFailureKind.RateLimited
+                ? "GRA_RATE_LIMITED"
+                : "GRA_SERVICE_UNAVAILABLE");
+            return new GraSubmissionResult(false, true, false, null, normalizedCode, failureKind);
         }
 
         if (!response.IsSuccessStatusCode)
         {
-            var requiresReconciliation = string.Equals(errorCode, "E700", StringComparison.OrdinalIgnoreCase);
+            var requiresReconciliation = failureKind == GraFailureKind.AlreadyProcessed;
             return new GraSubmissionResult(false, requiresReconciliation, !requiresReconciliation, null,
-                errorCode ?? "GRA_REQUEST_REJECTED");
+                errorCode ?? "GRA_REQUEST_REJECTED", failureKind);
         }
 
         if (string.IsNullOrWhiteSpace(responseBody))
         {
-            return new GraSubmissionResult(false, true, false, null, "GRA_RESPONSE_INVALID");
+            return new GraSubmissionResult(false, true, false, null, "GRA_RESPONSE_INVALID", GraFailureKind.InvalidResponse);
         }
 
         try
@@ -288,7 +293,7 @@ public sealed class GraEvatClient(
         }
         catch (JsonException)
         {
-            return new GraSubmissionResult(false, true, false, null, "GRA_RESPONSE_INVALID");
+            return new GraSubmissionResult(false, true, false, null, "GRA_RESPONSE_INVALID", GraFailureKind.InvalidResponse);
         }
     }
 
@@ -298,29 +303,29 @@ public sealed class GraEvatClient(
     {
         if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
         {
-            return new GraReconciliationResult(false, false, false, true, null, "GRA_AUTHENTICATION_FAILED");
+            return new GraReconciliationResult(false, false, false, true, null, "GRA_AUTHENTICATION_FAILED", GraFailureKind.Authentication);
         }
 
         var errorCode = GetErrorCode(responseBody);
         if (string.Equals(errorCode, "E701", StringComparison.OrdinalIgnoreCase))
         {
-            return new GraReconciliationResult(false, true, false, false, null, errorCode);
+            return new GraReconciliationResult(false, true, false, false, null, errorCode, GraFailureKind.NotFound);
         }
 
         if (!response.IsSuccessStatusCode)
         {
-            var pending = (int)response.StatusCode >= 500 ||
-                string.Equals(errorCode, "E990", StringComparison.OrdinalIgnoreCase);
+            var failureKind = ClassifyFailure(response.StatusCode, errorCode);
+            var pending = failureKind is GraFailureKind.RateLimited or GraFailureKind.Temporary;
             return new GraReconciliationResult(false, false, pending, !pending, null,
-                errorCode ?? "GRA_RECONCILIATION_FAILED");
+                errorCode ?? "GRA_RECONCILIATION_FAILED", failureKind);
         }
 
         var submission = string.IsNullOrWhiteSpace(responseBody)
-            ? new GraSubmissionResult(false, true, false, null, "GRA_RESPONSE_INVALID")
+            ? new GraSubmissionResult(false, true, false, null, "GRA_RESPONSE_INVALID", GraFailureKind.InvalidResponse)
             : ParseResponseBody(responseBody);
         return submission.IsSuccessful
             ? new GraReconciliationResult(true, false, false, false, submission.ExternalReference, null)
-            : new GraReconciliationResult(false, false, true, false, null, submission.ErrorCode);
+            : new GraReconciliationResult(false, false, true, false, null, submission.ErrorCode, submission.FailureKind);
     }
 
     private async Task TryWriteExchangeAsync(
@@ -480,7 +485,7 @@ public sealed class GraEvatClient(
         }
         catch (JsonException)
         {
-            return new GraSubmissionResult(false, true, false, null, "GRA_RESPONSE_INVALID");
+            return new GraSubmissionResult(false, true, false, null, "GRA_RESPONSE_INVALID", GraFailureKind.InvalidResponse);
         }
     }
 
@@ -488,13 +493,13 @@ public sealed class GraEvatClient(
     {
         if (!TryGetProperty(root, "response", out var response))
         {
-            return new GraSubmissionResult(false, true, false, null, "GRA_RESPONSE_INVALID");
+            return new GraSubmissionResult(false, true, false, null, "GRA_RESPONSE_INVALID", GraFailureKind.InvalidResponse);
         }
 
         var status = GetString(response, "status");
         if (!string.Equals(status, "SUCCESS", StringComparison.OrdinalIgnoreCase))
         {
-            return new GraSubmissionResult(false, false, true, null, "GRA_BUSINESS_REJECTION");
+            return new GraSubmissionResult(false, false, true, null, "GRA_BUSINESS_REJECTION", GraFailureKind.BusinessRejection);
         }
 
         string? externalReference = null;
@@ -506,6 +511,36 @@ public sealed class GraEvatClient(
         }
 
         return new GraSubmissionResult(true, false, false, externalReference, null);
+    }
+
+    private static GraFailureKind ClassifyFailure(HttpStatusCode statusCode, string? errorCode)
+    {
+        if (statusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden ||
+            string.Equals(errorCode, "E900", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(errorCode, "E907", StringComparison.OrdinalIgnoreCase))
+        {
+            return GraFailureKind.Authentication;
+        }
+
+        if (string.Equals(errorCode, "E700", StringComparison.OrdinalIgnoreCase))
+        {
+            return GraFailureKind.AlreadyProcessed;
+        }
+
+        if (string.Equals(errorCode, "E701", StringComparison.OrdinalIgnoreCase))
+        {
+            return GraFailureKind.NotFound;
+        }
+
+        if (statusCode == HttpStatusCode.TooManyRequests ||
+            string.Equals(errorCode, "E990", StringComparison.OrdinalIgnoreCase))
+        {
+            return GraFailureKind.RateLimited;
+        }
+
+        return (int)statusCode >= 500
+            ? GraFailureKind.Temporary
+            : GraFailureKind.BusinessRejection;
     }
 
     private static string? GetString(JsonElement element, string name)
