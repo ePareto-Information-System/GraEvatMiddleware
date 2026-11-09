@@ -28,6 +28,18 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ReadinessResponse' }
+  /api/v1/admin/operations/status:
+    get:
+      operationId: getOperationsStatus
+      description: Returns aggregate runtime and retry-queue signals without tenant payloads or credentials.
+      security: [{ AdminKey: [] }]
+      responses:
+        '200':
+          description: Current operational status and metrics snapshot.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OperationalStatus' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
   /api/v1/admin/tenants:
     post:
       operationId: registerTenant
@@ -229,6 +241,32 @@ components:
         gra: { type: string, enum: [disabled, healthy, unavailable, not_configured, not_checked] }
         graErrorCode: { type: [string, 'null'] }
         timestamp: { type: string, format: date-time }
+    OperationalStatus:
+      type: object
+      required: [requests, retries, pendingTransactions, timestamp]
+      properties:
+        requests: { $ref: '#/components/schemas/RequestMetrics' }
+        retries: { $ref: '#/components/schemas/RetryMetrics' }
+        pendingTransactions: { type: integer, minimum: 0 }
+        timestamp: { type: string, format: date-time }
+    RequestMetrics:
+      type: object
+      required: [started, completed, failed, rateLimited, averageDurationMilliseconds]
+      properties:
+        started: { type: integer, format: int64, minimum: 0 }
+        completed: { type: integer, format: int64, minimum: 0 }
+        failed: { type: integer, format: int64, minimum: 0 }
+        rateLimited: { type: integer, format: int64, minimum: 0 }
+        averageDurationMilliseconds: { type: number, minimum: 0 }
+    RetryMetrics:
+      type: object
+      required: [scheduled, processing, reconciliationPending, exhausted, expiredLeases]
+      properties:
+        scheduled: { type: integer, minimum: 0 }
+        processing: { type: integer, minimum: 0 }
+        reconciliationPending: { type: integer, minimum: 0 }
+        exhausted: { type: integer, minimum: 0 }
+        expiredLeases: { type: integer, minimum: 0 }
     RegisterTenantRequest:
       type: object
       required: [name, slug, taxpayerReference, graSecurityKeySecretName]

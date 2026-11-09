@@ -49,3 +49,7 @@ Tenant-facing audit lookup derives tenant identity from the authenticated API ke
 ## Abuse protection
 
 The global fixed-window limiter partitions requests by a SHA-256 fingerprint of the supplied middleware credential, or by remote address when no credential is present. The raw credential is not stored in the limiter key. Rejected requests return HTTP 429 with `RATE_LIMIT_EXCEEDED` and are still visible to the sanitized inbound exchange logger. Production limits remain configuration-driven.
+
+Request telemetry is captured after correlation ID assignment. Structured completion logs and in-process aggregate counters record status, duration, server failures and rate-limit responses without retaining credentials. The admin-protected operations endpoint combines those counters with PostgreSQL retry and pending-transaction aggregates for alerting.
+
+A hosted retention worker periodically invokes the scoped exchange-log retention service. Cleanup age, startup delay and interval are configuration-driven so every deployed instance applies the same approved policy.

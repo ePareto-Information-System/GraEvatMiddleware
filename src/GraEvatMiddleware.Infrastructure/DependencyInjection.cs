@@ -3,11 +3,13 @@ using GraEvatMiddleware.Application.Auditing;
 using GraEvatMiddleware.Application.Invoices;
 using GraEvatMiddleware.Application.Health;
 using GraEvatMiddleware.Application.Logging;
+using GraEvatMiddleware.Application.Operations;
 using GraEvatMiddleware.Application.Retry;
 using GraEvatMiddleware.Application.Tenants;
 using GraEvatMiddleware.Application.Transactions;
 using GraEvatMiddleware.Infrastructure.Authentication;
 using GraEvatMiddleware.Infrastructure.Logging;
+using GraEvatMiddleware.Infrastructure.Monitoring;
 using GraEvatMiddleware.Infrastructure.Persistence;
 using GraEvatMiddleware.Infrastructure.Retry;
 using GraEvatMiddleware.Infrastructure.Secrets;
@@ -46,9 +48,12 @@ public static class DependencyInjection
         services.AddScoped<IGraSecretProvider, ConfigurationGraSecretProvider>();
         services.AddSingleton<IExchangeContentSanitizer, SensitiveDataSanitizer>();
         services.AddSingleton<IIntegrationExchangeWriter, IntegrationExchangeWriter>();
+        services.AddSingleton<IRequestMetrics, OperationalMetrics>();
+        services.AddScoped<IOperationalStatusService, OperationalStatusService>();
         services.AddScoped<IExchangeLogRetentionService, ExchangeLogRetentionService>();
         services.AddScoped<IGraRetryProcessor, GraRetryProcessor>();
         services.AddHostedService<GraRetryWorker>();
+        services.AddHostedService<ExchangeLogRetentionWorker>();
         return services;
     }
 }

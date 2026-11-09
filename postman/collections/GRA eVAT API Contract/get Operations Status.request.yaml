@@ -1,0 +1,10 @@
+$kind: http-request
+description: Returns aggregate runtime and retry-queue signals without tenant payloads or credentials.
+url: "{{baseUrl}}/api/v1/admin/operations/status"
+method: GET
+headers:
+  X-Admin-Key: <API Key>
+  Accept: application/json
+settings: {}
+examples: ./.resources/get Operations Status.resources/examples
+order: 2500

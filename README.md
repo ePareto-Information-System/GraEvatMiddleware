@@ -173,6 +173,10 @@ Operational guidance is in [docs/operations-runbook.md](docs/operations-runbook.
 
 Reusable API checks are documented in [docs/postman-testing.md](docs/postman-testing.md). The isolated PostgreSQL concurrency suite is documented in [docs/postgresql-concurrency-testing.md](docs/postgresql-concurrency-testing.md).
 
+## Continuous integration
+
+The GitHub Actions workflow builds the .NET 10 solution, verifies formatting, runs the automated tests, checks NuGet dependencies, validates pull-request dependency changes and lints the OpenAPI specification plus both Postman collections. Real GRA staging calls and isolated PostgreSQL concurrency tests remain explicitly gated and are never enabled by the CI workflow.
+
 ## Rate limiting
 
 Rate limiting is enabled by default and configured without code changes:
@@ -201,11 +205,16 @@ Configure capture in `appsettings.json` or environment-specific configuration:
   "Enabled": true,
   "CaptureBodies": true,
   "MaximumBodyCharacters": 65536,
-  "RetentionDays": 90
+  "RetentionDays": 90,
+  "RetentionCleanupEnabled": true,
+  "RetentionCleanupInitialDelaySeconds": 60,
+  "RetentionCleanupIntervalMinutes": 1440
 }
 ```
 
-Set `CaptureBodies` to `false` to retain exchange metadata without bodies. Set `Enabled` to `false` to disable exchange persistence. Retention is exposed through an application service and is not scheduled automatically.
+Set `CaptureBodies` to `false` to retain exchange metadata without bodies. Set `Enabled` to `false` to disable exchange persistence. The hosted retention worker deletes records older than `RetentionDays` on the configured schedule. Set `RetentionCleanupEnabled` to `false` only when an approved external retention process owns deletion.
+
+Administrative operational monitoring is available at `GET /api/v1/admin/operations/status` using `X-Admin-Key`. It reports aggregate request, pending-transaction and retry-queue signals without exposing tenant payloads or credentials. Console logs use structured JSON and include the correlation ID, HTTP method, path, status and elapsed time.
 
 Example troubleshooting query:
 

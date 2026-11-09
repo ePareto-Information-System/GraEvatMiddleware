@@ -7,4 +7,7 @@ public sealed class ExchangeLoggingOptions
     public bool CaptureBodies { get; set; } = true;
     public int MaximumBodyCharacters { get; set; } = 65_536;
     public int RetentionDays { get; set; } = 90;
+    public bool RetentionCleanupEnabled { get; set; } = true;
+    public int RetentionCleanupInitialDelaySeconds { get; set; } = 60;
+    public int RetentionCleanupIntervalMinutes { get; set; } = 1_440;
 }
