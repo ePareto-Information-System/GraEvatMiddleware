@@ -22,13 +22,13 @@ The Odoo-facing tenant credential and the tenant's GRA security key are separate
 
 `SensitiveDataSanitizer` is shared by both paths. It redacts sensitive headers and recursively replaces sensitive JSON properties before applying the configured storage limit. Binary and unsupported content types are omitted. The `integration_exchange_logs` table is indexed by tenant/date, transaction, correlation ID, operation/date and outcome/date.
 
-`IExchangeLogRetentionService` deletes records older than `ExchangeLogging:RetentionDays` when invoked by an authorized operational process. It is intentionally not exposed through a public endpoint or scheduled automatically in the development baseline.
+`IExchangeLogRetentionService` deletes records older than `ExchangeLogging:RetentionDays`. A configurable hosted worker schedules cleanup; the service is not exposed through a public endpoint.
 
 ## GRA staging boundary
 
 `GraEvatClient` accepts outbound traffic only when the configured environment is `Staging`, the base URL uses HTTPS and the host is explicitly present in `GraApi:AllowedHosts`. Automatic redirect following is disabled. These checks prevent a configuration mistake from sending `security_key` to a production or unrelated host during the staging phase.
 
-The v8.2 staging integration uses the documented invoice, health and invoice-callback operations. The callback is the authoritative reconciliation operation for an invoice whose submission result is uncertain.
+The v8.2 staging integration uses the documented invoice, cancellation, health and invoice-callback operations. The callback is the authoritative reconciliation operation for an invoice-shaped submission whose result is uncertain.
 
 ## Retry and reconciliation
 

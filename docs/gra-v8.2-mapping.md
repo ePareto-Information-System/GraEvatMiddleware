@@ -1,6 +1,6 @@
 # GRA E-VAT Version 8.2 Mapping
 
-Status: 3 of 12 documented GRA operation groups implemented; nine remain draft
+Status: 8 of 12 documented GRA operation groups implemented; four remain
 
 Source: https://documenter.getpostman.com/view/29809098/2sBXVeGCzK
 
@@ -9,15 +9,16 @@ The documented staging host is `vsdcstaging.vat-gh.com`. The implemented operati
 - `POST /vsdc/api/v1/taxpayer/{reference}/invoice`
 - `GET /vsdc/api/v1/taxpayer/{reference}/health`
 - `POST /vsdc/api/v1/taxpayer/{reference}/invoice/callback`
+- `POST /vsdc/api/v1/taxpayer/{reference}/cancellation`
 
 | GRA v8.2 operation group | Middleware status |
 | --- | --- |
 | Invoice | Implemented |
-| Invoice refunds | Not implemented |
-| Refund cancellation | Not implemented |
-| Purchase | Not implemented |
-| Purchase return | Not implemented |
-| Purchase return cancellation | Not implemented |
+| Invoice refunds | Implemented (full and partial) |
+| Refund cancellation | Implemented |
+| Purchase | Implemented |
+| Purchase return | Implemented |
+| Purchase return cancellation | Implemented |
 | Credit note / debit note | Not implemented |
 | Statement of account | Not implemented |
 | Health check | Implemented |
@@ -25,7 +26,7 @@ The documented staging host is `vsdcstaging.vat-gh.com`. The implemented operati
 | Inventory | Not implemented |
 | Invoice callback | Implemented |
 
-This GRA-facing count is separate from the canonical middleware API, which currently exposes 14 operations to ERP clients and administrators. A GRA operation is added only after its canonical middleware schema, permissions, idempotency behaviour and response mapping have been agreed; the external GRA transport is not exposed directly to callers.
+This GRA-facing count is separate from the canonical middleware API, which exposes 19 operations to ERP clients and administrators. A GRA operation is added only after its canonical middleware schema, permissions, idempotency behaviour and response mapping have been agreed; the external GRA transport is not exposed directly to callers.
 
 All operations authenticate with the `security_key` request header. The taxpayer reference in the URL and the key must belong together.
 
@@ -37,6 +38,8 @@ The invoice callback body contains `reference`, `invoiceNumber` and `flag`. It i
 
 The client preserves the documented GRA error code and also assigns an internal failure category. `E700` is classified as already processed and triggers reconciliation, `E701` as not found, `E900` and `E907` as authentication failures, and `E990` as rate limited. HTTP 5xx responses are temporary, malformed successful responses are ambiguous invalid responses, and other non-success responses are business rejections. Retry decisions use the category instead of depending only on individual string codes.
 
-Refunds, refund cancellation, purchases, purchase returns, purchase-return cancellation, credit/debit notes, statements, TIN validation and inventory remain outside the implemented canonical slice until their Odoo-facing schemas are approved.
+The shared invoice transport uses `REFUND`, `PARTIAL_REFUND`, `PURCHASE` and `PURCHASE_RETURN` flags. Refunds and purchase returns carry the original document reference. Cancellation uses the documented `/cancellation` transport and its exact published flags, `REFUND_CANCELATION` and `PURCHASE_RETURN_CANCELATION`.
+
+Credit/debit notes, statements, TIN validation and inventory remain outside the implemented slice.
 
 The taxpayer reference is GRA-facing tenant configuration. The GRA `security_key` is a secret and must never be included in this document, application settings committed to source control, logs or API responses.

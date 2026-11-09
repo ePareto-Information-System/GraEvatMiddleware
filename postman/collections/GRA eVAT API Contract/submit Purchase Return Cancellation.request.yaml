@@ -1,0 +1,30 @@
+$kind: http-request
+description: "Cancel a previously submitted purchase return."
+url: "{{baseUrl}}/api/v1/purchase-return-cancellations"
+method: POST
+headers:
+  - key: Idempotency-Key
+    value: operation-unique-key
+    disabled: false
+    description: "(Required) Reuse only for the same operation and payload."
+  - key: Content-Type
+    value: application/json
+  - key: Accept
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "invoiceNumber": "RETURN-CANCEL-001",
+      "reference": "ORIGINAL-PURCHASE-RETURN-001",
+      "transactionDate": "2026-11-09T12:00:00Z",
+      "totalAmount": 118
+    }
+auth:
+  type: apikey
+  credentials:
+    key: X-API-Key
+    value: "{{apiKey}}"
+    in: header
+settings: {}
+order: 18000
