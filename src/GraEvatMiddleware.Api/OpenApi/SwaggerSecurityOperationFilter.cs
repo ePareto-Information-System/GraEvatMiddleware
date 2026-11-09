@@ -13,7 +13,10 @@ public sealed class SwaggerSecurityOperationFilter : IOperationFilter
         var controllerAttributes = context.MethodInfo.DeclaringType?.GetCustomAttributes(true) ?? [];
         var attributes = methodAttributes.Concat(controllerAttributes).ToArray();
 
-        if (attributes.OfType<AdminKeyAttribute>().Any())
+        var requiresAdminKey = attributes.OfType<AdminKeyAttribute>().Any();
+        var requiresTenantKey = attributes.OfType<AuthorizeAttribute>().Any();
+
+        if (requiresAdminKey)
         {
             operation.Security ??= [];
             operation.Security.Add(new OpenApiSecurityRequirement
@@ -22,12 +25,21 @@ public sealed class SwaggerSecurityOperationFilter : IOperationFilter
             });
         }
 
-        if (attributes.OfType<AuthorizeAttribute>().Any())
+        if (requiresTenantKey)
         {
             operation.Security ??= [];
             operation.Security.Add(new OpenApiSecurityRequirement
             {
                 [new OpenApiSecuritySchemeReference("TenantApiKey", context.Document)] = []
+            });
+        }
+
+        if (requiresAdminKey || requiresTenantKey)
+        {
+            operation.Responses ??= new OpenApiResponses();
+            operation.Responses.TryAdd("401", new OpenApiResponse
+            {
+                Description = "Authentication failed."
             });
         }
     }

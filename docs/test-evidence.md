@@ -18,7 +18,12 @@ Ordinary test runs use an in-memory database and a controlled GRA substitute. Th
 - Temporary retry only after callback reports invoice not found
 - Retry leasing, attempt limits and exhaustion state
 - GRA staging host, HTTPS and environment safety controls
+- GRA error classification for already-processed, not-found, credential, rate-limit, service and malformed-response cases
+- Startup validation for administrative keys, API-key pepper and enabled GRA settings
+- Liveness and dependency-readiness responses
 - Architecture dependency boundary
+
+The current ordinary suite contains 55 passing tests: 32 unit tests, 22 integration tests and one architecture test. The separate real GRA staging test remains skipped unless explicitly enabled with approved staging configuration.
 
 ## Manual evidence still required
 

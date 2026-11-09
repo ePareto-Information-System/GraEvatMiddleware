@@ -134,6 +134,63 @@ public sealed class GraEvatClientTests
 
         Assert.True(result.IsNotFound);
         Assert.Equal("E701", result.ErrorCode);
+        Assert.Equal(GraFailureKind.NotFound, result.FailureKind);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.BadRequest, "{\"status\":900}", "E900", GraFailureKind.Authentication, false, true)]
+    [InlineData(HttpStatusCode.Forbidden, "{}", "GRA_AUTHENTICATION_FAILED", GraFailureKind.Authentication, false, true)]
+    [InlineData(HttpStatusCode.Conflict, "{\"code\":\"E700\"}", "E700", GraFailureKind.AlreadyProcessed, true, false)]
+    [InlineData(HttpStatusCode.TooManyRequests, "{\"code\":\"E990\"}", "E990", GraFailureKind.RateLimited, true, false)]
+    [InlineData(HttpStatusCode.ServiceUnavailable, "{}", "GRA_SERVICE_UNAVAILABLE", GraFailureKind.Temporary, true, false)]
+    public async Task Submission_ClassifiesDocumentedAndTransportErrors(
+        HttpStatusCode statusCode,
+        string responseBody,
+        string expectedCode,
+        GraFailureKind expectedKind,
+        bool expectedPending,
+        bool expectedRejected)
+    {
+        using var httpClient = new HttpClient(new StaticResponseHandler(new HttpResponseMessage(statusCode)
+        {
+            Content = new StringContent(responseBody, System.Text.Encoding.UTF8, "application/json")
+        }));
+        var client = CreateClient(httpClient, new GraApiOptions
+        {
+            Enabled = true,
+            Environment = "Staging",
+            BaseUrl = "https://gra.example/",
+            AllowedHosts = ["gra.example"]
+        });
+
+        var result = await client.SubmitInvoiceAsync(CreateSubmission());
+
+        Assert.Equal(expectedCode, result.ErrorCode);
+        Assert.Equal(expectedKind, result.FailureKind);
+        Assert.Equal(expectedPending, result.IsPending);
+        Assert.Equal(expectedRejected, result.IsRejected);
+    }
+
+    [Fact]
+    public async Task SuccessfulHttpResponse_WithMalformedBody_IsClassifiedAsInvalidResponse()
+    {
+        using var httpClient = new HttpClient(new StaticResponseHandler(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("not-json", System.Text.Encoding.UTF8, "application/json")
+        }));
+        var client = CreateClient(httpClient, new GraApiOptions
+        {
+            Enabled = true,
+            Environment = "Staging",
+            BaseUrl = "https://gra.example/",
+            AllowedHosts = ["gra.example"]
+        });
+
+        var result = await client.SubmitInvoiceAsync(CreateSubmission());
+
+        Assert.True(result.IsPending);
+        Assert.Equal("GRA_RESPONSE_INVALID", result.ErrorCode);
+        Assert.Equal(GraFailureKind.InvalidResponse, result.FailureKind);
     }
 
     [Fact]

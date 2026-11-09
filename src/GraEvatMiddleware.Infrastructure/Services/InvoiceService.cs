@@ -99,7 +99,7 @@ internal sealed class InvoiceService(
             {
                 transaction.MarkPending(result.ErrorCode ?? "GRA_STATUS_UNKNOWN", completedAt);
                 ScheduleRetryIfRequired(transaction, command.Invoice,
-                    result.ErrorCode ?? "GRA_STATUS_UNKNOWN", completedAt);
+                    result.ErrorCode ?? "GRA_STATUS_UNKNOWN", result.FailureKind, completedAt);
             }
             else
             {
@@ -110,13 +110,13 @@ internal sealed class InvoiceService(
         {
             var failedAt = DateTimeOffset.UtcNow;
             transaction.MarkPending("GRA_TIMEOUT_STATUS_UNKNOWN", failedAt);
-            ScheduleRetryIfRequired(transaction, command.Invoice, "GRA_TIMEOUT_STATUS_UNKNOWN", failedAt);
+            ScheduleRetryIfRequired(transaction, command.Invoice, "GRA_TIMEOUT_STATUS_UNKNOWN", GraFailureKind.Ambiguous, failedAt);
         }
         catch (HttpRequestException)
         {
             var failedAt = DateTimeOffset.UtcNow;
             transaction.MarkPending("GRA_COMMUNICATION_STATUS_UNKNOWN", failedAt);
-            ScheduleRetryIfRequired(transaction, command.Invoice, "GRA_COMMUNICATION_STATUS_UNKNOWN", failedAt);
+            ScheduleRetryIfRequired(transaction, command.Invoice, "GRA_COMMUNICATION_STATUS_UNKNOWN", GraFailureKind.Ambiguous, failedAt);
         }
 
         dbContext.AuditEvents.Add(CreateTransactionAudit(transaction, "transaction.completed", transaction.UpdatedAt));
@@ -183,9 +183,11 @@ internal sealed class InvoiceService(
         EVatTransaction transaction,
         InvoiceCommand invoice,
         string errorCode,
+        GraFailureKind failureKind,
         DateTimeOffset now)
     {
         if (!retryOptions.Value.Enabled ||
+            failureKind == GraFailureKind.Configuration ||
             errorCode is "GRA_INTEGRATION_DISABLED" or "GRA_SECRET_NOT_CONFIGURED" or
                 "GRA_ENVIRONMENT_NOT_ALLOWED" or "GRA_BASE_URL_INVALID" or
                 "GRA_HTTPS_REQUIRED" or "GRA_HOST_NOT_ALLOWED" or "GRA_STAGING_HOST_REQUIRED")
@@ -193,7 +195,8 @@ internal sealed class InvoiceService(
             return;
         }
 
-        var classification = errorCode is "GRA_SERVICE_UNAVAILABLE" or "E990"
+        var classification = failureKind is GraFailureKind.Temporary or GraFailureKind.RateLimited ||
+            errorCode is "GRA_SERVICE_UNAVAILABLE" or "E990"
             ? RetryFailureClassification.Temporary
             : RetryFailureClassification.Ambiguous;
         var retry = GraRetryJob.Schedule(

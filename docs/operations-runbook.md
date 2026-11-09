@@ -4,7 +4,9 @@
 
 Keep `GraApi:Enabled`, `GraRetry:Enabled` and `GraRetry:WorkerEnabled` disabled until the target environment and credentials are verified. Enable retry scheduling before enabling the worker so queued jobs can be inspected.
 
-Liveness is available at `GET /api/v1/health/live`. A healthy response proves the process is serving requests; it does not prove PostgreSQL or GRA availability.
+Liveness is available at `GET /api/v1/health/live`. A healthy response proves the process is serving requests; it does not prove PostgreSQL or GRA availability. Readiness is available at `GET /api/v1/health/ready`. It verifies PostgreSQL and, when GRA integration is enabled, uses the first active tenant configuration to call the GRA health operation. HTTP 503 means the instance should not receive invoice traffic until the reported component is corrected.
+
+Startup validation rejects missing, short, placeholder or matching administrative keys and API-key peppers. When GRA is enabled, startup also requires the staging environment, HTTPS, an allowlisted approved staging/test host, and a timeout between 1 and 120 seconds. Keep these values in user secrets or the approved environment secret store, never committed settings.
 
 ## Deployment
 

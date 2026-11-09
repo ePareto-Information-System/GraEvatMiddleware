@@ -32,7 +32,8 @@ public sealed record GraSubmissionResult(
     bool IsPending,
     bool IsRejected,
     string? ExternalReference,
-    string? ErrorCode);
+    string? ErrorCode,
+    GraFailureKind FailureKind = GraFailureKind.None);
 
 public sealed record GraInvoiceReconciliation(
     Guid TransactionId,
@@ -50,7 +51,8 @@ public sealed record GraReconciliationResult(
     bool IsPending,
     bool IsRejected,
     string? ExternalReference,
-    string? ErrorCode);
+    string? ErrorCode,
+    GraFailureKind FailureKind = GraFailureKind.None);
 
 public sealed record GraHealthCheck(
     string TaxpayerReference,
@@ -59,3 +61,17 @@ public sealed record GraHealthCheck(
 public sealed record GraHealthResult(
     bool IsHealthy,
     string? ErrorCode);
+
+public enum GraFailureKind
+{
+    None,
+    Configuration,
+    Authentication,
+    AlreadyProcessed,
+    NotFound,
+    RateLimited,
+    Temporary,
+    Ambiguous,
+    BusinessRejection,
+    InvalidResponse
+}
