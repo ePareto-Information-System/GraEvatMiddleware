@@ -265,33 +265,59 @@ public sealed class GraEvatClient(
             new Uri(new Uri(baseUri!.AbsoluteUri.TrimEnd('/') + "/"), relativeUrl));
         request.Headers.Add("security_key", securityKey);
         var stopwatch = Stopwatch.StartNew();
-        using var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-        var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
-        stopwatch.Stop();
-        var errorCode = response.IsSuccessStatusCode ? null : GetErrorCode(responseBody) ?? "GRA_IDENTIFICATION_FAILED";
-        var loggedUrl = $"vsdc/api/v1/taxpayer/{Uri.EscapeDataString(identification.TaxpayerReference)}/identification/{segment}/[REDACTED]";
-        await TryWriteIdentificationExchangeAsync(identification, loggedUrl, response, responseBody,
-            stopwatch.ElapsedMilliseconds, errorCode);
-        if (!response.IsSuccessStatusCode)
-        {
-            return new IdentificationResult(false, null, null, null, null, null, errorCode);
-        }
-
+        HttpResponseMessage? response;
+        string? responseBody;
         try
         {
-            using var document = JsonDocument.Parse(responseBody);
-            var root = document.RootElement;
-            if (!TryGetProperty(root, "data", out var data) || data.ValueKind != JsonValueKind.Object)
+            response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            stopwatch.Stop();
+            var timeoutUrl = $"vsdc/api/v1/taxpayer/{Uri.EscapeDataString(identification.TaxpayerReference)}/identification/{segment}/[REDACTED]";
+            await TryWriteIdentificationExchangeAsync(identification, timeoutUrl, null, null,
+                stopwatch.ElapsedMilliseconds, "GRA_IDENTIFICATION_TIMEOUT");
+            return new IdentificationResult(false, null, null, null, null, null, "GRA_IDENTIFICATION_TIMEOUT");
+        }
+        catch (HttpRequestException)
+        {
+            stopwatch.Stop();
+            var failureUrl = $"vsdc/api/v1/taxpayer/{Uri.EscapeDataString(identification.TaxpayerReference)}/identification/{segment}/[REDACTED]";
+            await TryWriteIdentificationExchangeAsync(identification, failureUrl, null, null,
+                stopwatch.ElapsedMilliseconds, "GRA_IDENTIFICATION_COMMUNICATION_FAILURE");
+            return new IdentificationResult(
+                false, null, null, null, null, null, "GRA_IDENTIFICATION_COMMUNICATION_FAILURE");
+        }
+
+        using (response)
+        {
+            stopwatch.Stop();
+            var errorCode = response.IsSuccessStatusCode ? null : GetErrorCode(responseBody) ?? "GRA_IDENTIFICATION_FAILED";
+            var loggedUrl = $"vsdc/api/v1/taxpayer/{Uri.EscapeDataString(identification.TaxpayerReference)}/identification/{segment}/[REDACTED]";
+            await TryWriteIdentificationExchangeAsync(identification, loggedUrl, response, responseBody,
+                stopwatch.ElapsedMilliseconds, errorCode);
+            if (!response.IsSuccessStatusCode)
+            {
+                return new IdentificationResult(false, null, null, null, null, null, errorCode);
+            }
+
+            try
+            {
+                using var document = JsonDocument.Parse(responseBody);
+                var root = document.RootElement;
+                if (!TryGetProperty(root, "data", out var data) || data.ValueKind != JsonValueKind.Object)
+                {
+                    return new IdentificationResult(false, null, null, null, null, null, "GRA_RESPONSE_INVALID");
+                }
+
+                return new IdentificationResult(true, GetString(data, "tin"), GetString(data, "type"),
+                    GetString(data, "name"), GetString(data, "sector"), GetString(data, "address"), null);
+            }
+            catch (JsonException)
             {
                 return new IdentificationResult(false, null, null, null, null, null, "GRA_RESPONSE_INVALID");
             }
-
-            return new IdentificationResult(true, GetString(data, "tin"), GetString(data, "type"),
-                GetString(data, "name"), GetString(data, "sector"), GetString(data, "address"), null);
-        }
-        catch (JsonException)
-        {
-            return new IdentificationResult(false, null, null, null, null, null, "GRA_RESPONSE_INVALID");
         }
     }
 
@@ -711,7 +737,7 @@ public sealed class GraEvatClient(
     private async Task TryWriteIdentificationExchangeAsync(
         GraIdentificationRequest identification,
         string relativeUrl,
-        HttpResponseMessage response,
+        HttpResponseMessage? response,
         string? responseBody,
         long durationMilliseconds,
         string? errorCode) =>

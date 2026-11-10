@@ -204,6 +204,46 @@ public sealed class GraEvatClientTests
     }
 
     [Theory]
+    [InlineData(HttpStatusCode.BadRequest, "{\"status\":722}", "E722")]
+    [InlineData(HttpStatusCode.Conflict, "{\"code\":\"E723\"}", "E723")]
+    [InlineData(HttpStatusCode.UnprocessableEntity, "{\"errorCode\":\"E724\"}", "E724")]
+    [InlineData(HttpStatusCode.BadRequest, "{\"status\":703}", "E703")]
+    [InlineData(HttpStatusCode.BadRequest, "{\"status\":881}", "E881")]
+    public async Task RemainingOperation_PreservesDocumentedBusinessError(
+        HttpStatusCode statusCode,
+        string body,
+        string expectedCode)
+    {
+        using var httpClient = new HttpClient(new StaticResponseHandler(new HttpResponseMessage(statusCode)
+        {
+            Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json")
+        }));
+        var client = CreateStagingClient(httpClient);
+        var payload = new InventorySubmissionCommand(new DateOnly(2026, 11, 10),
+            [new InventoryItemCommand("ITEM-001", "Item", 1m, null, 10m, null)]);
+
+        var result = await client.SubmitOperationAsync(CreateOperation("Inventory", "INVENTORY-20261110", payload));
+
+        Assert.True(result.IsRejected);
+        Assert.Equal(expectedCode, result.ErrorCode);
+        Assert.Equal(GraFailureKind.BusinessRejection, result.FailureKind);
+    }
+
+    [Fact]
+    public async Task Identification_CommunicationFailure_ReturnsControlledResult()
+    {
+        using var httpClient = new HttpClient(new ThrowingResponseHandler());
+        var client = CreateStagingClient(httpClient);
+
+        var result = await client.ValidateIdentificationAsync(new GraIdentificationRequest(
+            Guid.NewGuid(), "correlation", "Identification", "TIN-001", "gra-secret-name",
+            "tin", "C0034186913"));
+
+        Assert.False(result.IsValid);
+        Assert.Equal("GRA_IDENTIFICATION_COMMUNICATION_FAILURE", result.ErrorCode);
+    }
+
+    [Theory]
     [InlineData("Production", "https://vsdcstaging.vat-gh.com/", "GRA_ENVIRONMENT_NOT_ALLOWED")]
     [InlineData("Staging", "http://vsdcstaging.vat-gh.com/", "GRA_HTTPS_REQUIRED")]
     [InlineData("Staging", "https://example.com/", "GRA_HOST_NOT_ALLOWED")]
@@ -440,6 +480,14 @@ public sealed class GraEvatClientTests
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken cancellationToken) => Task.FromResult(response);
+    }
+
+    private sealed class ThrowingResponseHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken) =>
+            throw new HttpRequestException("Controlled communication failure.");
     }
 
     private sealed class RecordingResponseHandler(HttpResponseMessage response) : HttpMessageHandler

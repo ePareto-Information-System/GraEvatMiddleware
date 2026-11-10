@@ -309,7 +309,7 @@ paths:
         - name: tin
           in: path
           required: true
-          schema: { type: string, minLength: 1 }
+          schema: { type: string, minLength: 3, maxLength: 64 }
       responses:
         '200':
           description: Normalized GRA identification result.
@@ -317,6 +317,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/IdentificationResponse' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationError' }
   /api/v1/identifications/ghana-card/{nationalId}:
     get:
       operationId: validateGhanaCard
@@ -325,7 +326,7 @@ paths:
         - name: nationalId
           in: path
           required: true
-          schema: { type: string, minLength: 1 }
+          schema: { type: string, minLength: 3, maxLength: 64 }
       responses:
         '200':
           description: Normalized GRA identification result.
@@ -333,6 +334,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/IdentificationResponse' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationError' }
   /api/v1/transactions/{transactionId}:
     get:
       operationId: getTransaction

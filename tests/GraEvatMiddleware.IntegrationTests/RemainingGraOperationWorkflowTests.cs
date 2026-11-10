@@ -129,71 +129,143 @@ public sealed class RemainingGraOperationWorkflowTests(GraEvatApiFactory factory
         Assert.DoesNotContain(loggedUrls, url => url.Contains(value, StringComparison.OrdinalIgnoreCase));
     }
 
+    [Theory]
+    [InlineData("tin", "X")]
+    [InlineData("ghana-card", "X")]
+    public async Task Identification_RejectsInvalidIdentifierLength(string route, string value)
+    {
+        using var client = factory.CreateClient();
+        var tenant = await RegisterTenantAsync(client);
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"/api/v1/identifications/{route}/{value}");
+        request.Headers.Add("X-API-Key", tenant.Credential.ApiKey);
+
+        using var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("/api/v1/credit-debit-notes")]
+    [InlineData("/api/v1/statements-of-account")]
+    [InlineData("/api/v1/inventory")]
+    public async Task StateChangingOperation_RejectsMissingBusinessDate(string endpoint)
+    {
+        using var client = factory.CreateClient();
+        var tenant = await RegisterTenantAsync(client);
+        object body = endpoint switch
+        {
+            "/api/v1/credit-debit-notes" => CreateNote("CREDIT", "NOTE-NO-DATE", true),
+            "/api/v1/statements-of-account" => CreateStatement(true),
+            "/api/v1/inventory" => CreateInventory(true),
+            _ => throw new ArgumentOutOfRangeException(nameof(endpoint))
+        };
+        using var request = CreateAuthenticatedPost(
+            endpoint, tenant.Credential.ApiKey, $"missing-date-{Guid.NewGuid():N}", body);
+
+        using var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("/api/v1/credit-debit-notes")]
+    [InlineData("/api/v1/statements-of-account")]
+    [InlineData("/api/v1/inventory")]
+    [InlineData("/api/v1/identifications/tin/C0034186913")]
+    public async Task SuspendedTenant_CannotUseRemainingOperations(string endpoint)
+    {
+        using var client = factory.CreateClient();
+        var tenant = await RegisterTenantAsync(client);
+        using var suspend = new HttpRequestMessage(
+            HttpMethod.Post, $"/api/v1/admin/tenants/{tenant.TenantId}/suspend");
+        suspend.Headers.Add("X-Admin-Key", "integration-test-admin-key");
+        using var suspendResponse = await client.SendAsync(suspend);
+        Assert.Equal(HttpStatusCode.NoContent, suspendResponse.StatusCode);
+
+        using var request = endpoint.Contains("identifications", StringComparison.Ordinal)
+            ? new HttpRequestMessage(HttpMethod.Get, endpoint)
+            : CreateAuthenticatedPost(endpoint, tenant.Credential.ApiKey,
+                $"suspended-{Guid.NewGuid():N}", CreateBody(endpoint));
+        request.Headers.TryAddWithoutValidation("X-API-Key", tenant.Credential.ApiKey);
+        using var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
     private static object CreateBody(string endpoint) => endpoint switch
     {
         "/api/v1/credit-debit-notes" => CreateNote("CREDIT", "NOTE-001"),
-        "/api/v1/statements-of-account" => new StatementOfAccountRequest
-        {
-            Currency = "GHS",
-            ExchangeRate = 1m,
-            TotalVat = 18m,
-            TotalAmount = 118m,
-            TotalLevies = 0m,
-            BusinessPartnerName = "Example Partner",
-            BusinessPartnerTin = "C0000000000",
-            GroupReferenceId = "STATEMENT-001",
-            TransactionDate = new DateTimeOffset(2026, 11, 10, 12, 0, 0, TimeSpan.Zero),
-            CalculationType = "INCLUSIVE",
-            Lines =
-            [
-                new StatementLineRequest
-                {
-                    Currency = "GHS",
-                    ExchangeRate = 1m,
-                    CalculationType = "INCLUSIVE",
-                    InvoiceNumber = "INV-001",
-                    Flag = "INVOICE",
-                    InvoiceVat = 18m,
-                    InvoiceAmount = 118m,
-                    InvoiceLevies = 0m,
-                    TransactionDate = new DateTimeOffset(2026, 11, 9, 12, 0, 0, TimeSpan.Zero)
-                }
-            ]
-        },
-        "/api/v1/inventory" => new InventorySubmissionRequest
-        {
-            InventoryDate = new DateOnly(2026, 11, 10),
-            Inventories =
-            [
-                new InventoryItemRequest
-                {
-                    Code = "ITEM-001",
-                    Description = "Example item",
-                    Quantity = 3m,
-                    BatchCode = "BATCH-001",
-                    UnitPrice = 100m,
-                    ExpiryDate = new DateOnly(2027, 11, 10)
-                }
-            ]
-        },
+        "/api/v1/statements-of-account" => CreateStatement(),
+        "/api/v1/inventory" => CreateInventory(),
         _ => throw new ArgumentOutOfRangeException(nameof(endpoint))
     };
 
-    private static CreditDebitNoteRequest CreateNote(string noteType, string noteNumber) => new()
+    private static StatementOfAccountRequest CreateStatement(bool missingDate = false) => new()
     {
-        NoteNumber = noteNumber,
-        NoteType = noteType,
         Currency = "GHS",
         ExchangeRate = 1m,
-        NoteAmount = 1200m,
-        CalculationType = "EXCLUSIVE",
+        TotalVat = 18m,
+        TotalAmount = 118m,
+        TotalLevies = 0m,
         BusinessPartnerName = "Example Partner",
         BusinessPartnerTin = "C0000000000",
-        GroupReferenceId = "GROUP-001",
-        TransactionDate = new DateOnly(2026, 11, 10),
-        Remarks = "Controlled test",
-        NoteLineType = "INVOICE",
-        NoteLines =
+        GroupReferenceId = "STATEMENT-001",
+        TransactionDate = missingDate
+            ? default
+            : new DateTimeOffset(2026, 11, 10, 12, 0, 0, TimeSpan.Zero),
+        CalculationType = "INCLUSIVE",
+        Lines =
+        [
+            new StatementLineRequest
+            {
+                Currency = "GHS",
+                ExchangeRate = 1m,
+                CalculationType = "INCLUSIVE",
+                InvoiceNumber = "INV-001",
+                Flag = "INVOICE",
+                InvoiceVat = 18m,
+                InvoiceAmount = 118m,
+                InvoiceLevies = 0m,
+                TransactionDate = new DateTimeOffset(2026, 11, 9, 12, 0, 0, TimeSpan.Zero)
+            }
+        ]
+    };
+
+    private static InventorySubmissionRequest CreateInventory(bool missingDate = false) => new()
+    {
+        InventoryDate = missingDate ? default : new DateOnly(2026, 11, 10),
+        Inventories =
+        [
+            new InventoryItemRequest
+            {
+                Code = "ITEM-001",
+                Description = "Example item",
+                Quantity = 3m,
+                BatchCode = "BATCH-001",
+                UnitPrice = 100m,
+                ExpiryDate = new DateOnly(2027, 11, 10)
+            }
+        ]
+    };
+
+    private static CreditDebitNoteRequest CreateNote(
+        string noteType,
+        string noteNumber,
+        bool missingDate = false) => new()
+        {
+            NoteNumber = noteNumber,
+            NoteType = noteType,
+            Currency = "GHS",
+            ExchangeRate = 1m,
+            NoteAmount = 1200m,
+            CalculationType = "EXCLUSIVE",
+            BusinessPartnerName = "Example Partner",
+            BusinessPartnerTin = "C0000000000",
+            GroupReferenceId = "GROUP-001",
+            TransactionDate = missingDate ? default : new DateOnly(2026, 11, 10),
+            Remarks = "Controlled test",
+            NoteLineType = "INVOICE",
+            NoteLines =
         [
             new CreditDebitNoteLineRequest
             {
@@ -202,7 +274,7 @@ public sealed class RemainingGraOperationWorkflowTests(GraEvatApiFactory factory
                 InvoiceAmount = 1200m
             }
         ]
-    };
+        };
 
     private static HttpRequestMessage CreateAuthenticatedPost(
         string endpoint,
