@@ -1,0 +1,14 @@
+$kind: collection
+name: GRA eVAT Safe Performance
+description: Local non-production workload using reads, validation rejection and idempotent replay. It never enables or targets GRA.
+variables:
+  - key: baseUrl
+    value: 'http://localhost:5189'
+  - key: apiKey
+    value: ''
+  - key: transactionId
+    value: ''
+  - key: replayIdempotencyKey
+    value: ''
+  - key: replayInvoiceNumber
+    value: ''

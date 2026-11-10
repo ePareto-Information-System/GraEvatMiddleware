@@ -1,0 +1,25 @@
+$kind: http-request
+url: '{{baseUrl}}/api/v1/invoices'
+method: POST
+headers:
+  - key: Idempotency-Key
+    value: safe-invalid-request
+  - key: Content-Type
+    value: application/json
+auth:
+  type: apikey
+  credentials:
+    - key: key
+      value: X-API-Key
+    - key: value
+      value: '{{apiKey}}'
+    - key: in
+      value: header
+body:
+  type: json
+  content: '{}'
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('invalid payload is rejected without GRA', () => pm.response.to.have.status(422));
+order: 6000

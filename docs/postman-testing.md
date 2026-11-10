@@ -1,9 +1,10 @@
 # Postman API Testing
 
-Two local collections are maintained:
+Three local collections are maintained:
 
 - `GRA eVAT API Contract` is aligned with `docs/openapi-v1.yaml` and contains all 24 middleware operations, including notes, statements, inventory and identification validation.
 - `GRA eVAT Local Workflow` is an ordered nine-request regression workflow covering liveness, readiness, tenant registration, invoice submission, idempotent replay, changed-payload rejection, transaction lookup, tenant-scoped audit lookup and missing-key authentication.
+- `GRA eVAT Safe Performance` is a six-request, non-fiscal workload for health checks, authenticated reads, idempotent replay and rejected invalid input. It must be run with GRA disabled and uses empty committed secret placeholders.
 
 The local workflow expects the API at `http://localhost:5189`, PostgreSQL to be available, and `GraApi:Enabled` to remain `false`. It creates unique tenant and invoice values on every run. It does not call GRA.
 
@@ -22,3 +23,5 @@ postman spec lint .\docs\openapi-v1.yaml --issueType syntax --no-report-events; 
 ```
 
 Postman cloud publication is intentionally not configured. Local artifacts are reviewable in Git and no API key, administrative key or GRA security key is committed.
+
+See `performance-testing.md` for the safe performance command, thresholds, measured local result and test limitations.
