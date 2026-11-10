@@ -46,6 +46,7 @@ public static class DependencyInjection
         services.AddScoped<IInvoiceService>(provider => provider.GetRequiredService<InvoiceService>());
         services.AddScoped<IFiscalTransactionService>(provider => provider.GetRequiredService<InvoiceService>());
         services.AddScoped<ITransactionQueryService>(provider => provider.GetRequiredService<InvoiceService>());
+        services.AddScoped<IGraOperationService, GraOperationService>();
         services.AddScoped<IGraSecretProvider, ConfigurationGraSecretProvider>();
         services.AddSingleton<IExchangeContentSanitizer, SensitiveDataSanitizer>();
         services.AddSingleton<IIntegrationExchangeWriter, IntegrationExchangeWriter>();

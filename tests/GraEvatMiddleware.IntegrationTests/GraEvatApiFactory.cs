@@ -1,5 +1,6 @@
 using GraEvatMiddleware.Application.Abstractions;
 using GraEvatMiddleware.Application.Logging;
+using GraEvatMiddleware.Application.Operations;
 using GraEvatMiddleware.Domain.Integration;
 using GraEvatMiddleware.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Hosting;
@@ -75,6 +76,17 @@ internal sealed class SuccessfulGraEvatClient(
     IIntegrationExchangeWriter writer,
     IExchangeContentSanitizer sanitizer) : IGraEvatClient
 {
+    public Task<GraSubmissionResult> SubmitOperationAsync(
+        GraOperationSubmission submission,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(new GraSubmissionResult(true, false, false, submission.DocumentNumber, null));
+
+    public Task<IdentificationResult> ValidateIdentificationAsync(
+        GraIdentificationRequest request,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(new IdentificationResult(
+            true, "C0034186913", request.Kind, "Example Taxpayer", "Services", "Accra", null));
+
     public async Task<GraSubmissionResult> SubmitCancellationAsync(
         GraCancellationSubmission submission,
         CancellationToken cancellationToken = default)
