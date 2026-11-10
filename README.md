@@ -16,10 +16,12 @@ Multi-tenant ASP.NET Core middleware that exposes a canonical API for Odoo and i
 - Per-tenant API key issuance, atomic rotation and revocation with HMAC-SHA256 hashing
 - Canonical invoice submission endpoint for Odoo, Python and other HTTP clients
 - Canonical full/partial refund, refund-cancellation, purchase, purchase-return and return-cancellation endpoints
+- Credit/debit notes, statements of account, inventory submissions, and TIN/Ghana Card validation
 - Tenant-scoped idempotency and transaction lookup
 - PostgreSQL persistence, initial EF Core migration and audit events
 - Sanitized inbound and outbound request/response exchange logs
 - GRA v8.2 invoice and cancellation adapters with exact operation flags, secret indirection and conservative timeout handling
+- Complete adapters for all 12 documented GRA v8.2 operation groups
 - Durable GRA retry jobs with lease-based multi-instance claiming and callback-first reconciliation
 - Correlation IDs, RFC 7807 errors and health endpoint
 - Tenant-scoped audit lookup and configurable request rate limiting
@@ -168,7 +170,7 @@ Inspect retry jobs with this one-line PowerShell command:
 
 The persisted canonical retry payload contains invoice data needed for a safe resubmission. Production deployment therefore requires database encryption, least-privilege database access and an approved retention period.
 
-The canonical contract is documented in [docs/api-contract-v1.md](docs/api-contract-v1.md) and [docs/openapi-v1.yaml](docs/openapi-v1.yaml).
+The canonical contract is documented in [docs/api-contract-v1.md](docs/api-contract-v1.md) and [docs/openapi-v1.yaml](docs/openapi-v1.yaml). Requirements traceability and use cases are in [docs/gra-requirements-baseline.md](docs/gra-requirements-baseline.md) and [docs/use-case-catalogue.md](docs/use-case-catalogue.md).
 
 Operational guidance is in [docs/operations-runbook.md](docs/operations-runbook.md), [docs/tenant-onboarding.md](docs/tenant-onboarding.md), [docs/threat-model.md](docs/threat-model.md) and [docs/test-evidence.md](docs/test-evidence.md).
 

@@ -1,0 +1,33 @@
+$kind: http-request
+description: Submit a credit or debit note. The middleware derives the GRA flag from noteType.
+url: "{{baseUrl}}/api/v1/credit-debit-notes"
+method: POST
+headers:
+  - key: Idempotency-Key
+    value: note-unique-key-001
+    description: Reuse only for the identical operation and payload.
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "noteNumber": "NOTE-001",
+      "noteType": "CREDIT",
+      "currency": "GHS",
+      "exchangeRate": 1,
+      "noteAmount": 118,
+      "calculationType": "INCLUSIVE",
+      "businessPartnerName": "Example Partner",
+      "businessPartnerTin": "C0000000001",
+      "groupReferenceId": "GROUP-001",
+      "transactionDate": "2026-11-10",
+      "remarks": "Correction",
+      "noteLineType": "INVOICE",
+      "noteLines": [{ "invoiceNumber": "INV-001", "invoiceDate": "2026-11-09", "invoiceAmount": 118 }]
+    }
+auth:
+  type: apikey
+  credentials: { key: X-API-Key, value: "{{apiKey}}", in: header }
+settings: {}
+order: 19000

@@ -30,6 +30,11 @@ The canonical API is exposed under `/api/v1`. It is independent of the GRA trans
 - `POST /api/v1/purchase-returns`
 - `POST /api/v1/refund-cancellations`
 - `POST /api/v1/purchase-return-cancellations`
+- `POST /api/v1/credit-debit-notes`
+- `POST /api/v1/statements-of-account`
+- `POST /api/v1/inventory`
+- `GET /api/v1/identifications/tin/{tin}`
+- `GET /api/v1/identifications/ghana-card/{nationalId}`
 - `GET /api/v1/transactions/{transactionId}`
 - `GET /api/v1/audit?limit=50`
 
@@ -47,6 +52,8 @@ Liveness confirms that the middleware process can serve HTTP requests. Readiness
 
 The administrative operations status endpoint reports aggregate request counts and duration, pending transaction counts, retry-queue states, exhausted jobs and expired leases. It requires `X-Admin-Key` and never returns tenant identifiers, invoice payloads or credentials.
 
-The machine-readable source of truth for this slice is `docs/openapi-v1.yaml`.
+Credit/debit notes, statements and inventory are state-changing and therefore require `Idempotency-Key`. They return an operation transaction whose `documentNumber` is the note number, statement group reference, or inventory-date identifier. TIN and Ghana Card validation are read-only and do not create fiscal transactions.
 
-Credit/debit note, statement, inventory and TIN-validation operations remain for later phases. GRA callback handling is an internal recovery control and is not exposed to callers.
+The machine-readable source of truth is `docs/openapi-v1.yaml`.
+
+GRA callback handling remains an internal recovery control and is not exposed to callers. Automatic callback-first retry applies only to invoice-family operations because GRA does not publish reconciliation callbacks for notes, statements or inventory.

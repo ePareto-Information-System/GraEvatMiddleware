@@ -7,3 +7,4 @@
 - What retention periods apply to transaction and audit data?
 - What database-encryption and field-encryption controls are required for persisted retry payloads?
 - What production GRA host allowlist will be approved after staging sign-off?
+- The Ghana Card documentation displays `/identification/nationalId/{value}`, but its generated cURL example repeats the TIN URL. GRA should confirm that the displayed national-ID path is authoritative before production certification.

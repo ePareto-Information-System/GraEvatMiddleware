@@ -1,0 +1,21 @@
+$kind: http-request
+description: Submit the tenant inventory snapshot for a date.
+url: "{{baseUrl}}/api/v1/inventory"
+method: POST
+headers:
+  - key: Idempotency-Key
+    value: inventory-unique-key-001
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "inventoryDate": "2026-11-10",
+      "inventories": [{ "code": "ITEM-001", "description": "Example item", "quantity": 3, "batchCode": "BATCH-001", "unitPrice": 100, "expiryDate": "2027-11-10" }]
+    }
+auth:
+  type: apikey
+  credentials: { key: X-API-Key, value: "{{apiKey}}", in: header }
+settings: {}
+order: 21000
