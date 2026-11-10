@@ -1,0 +1,12 @@
+$kind: http-request
+description: Validate a Ghana Card identifier through GRA.
+url: "{{baseUrl}}/api/v1/identifications/ghana-card/:nationalId"
+method: GET
+pathVariables:
+  - key: nationalId
+    value: GHA-000XXXXXX-2
+auth:
+  type: apikey
+  credentials: { key: X-API-Key, value: "{{apiKey}}", in: header }
+settings: {}
+order: 23000

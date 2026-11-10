@@ -2,6 +2,7 @@ using System.Net;
 using GraEvatMiddleware.Application.Abstractions;
 using GraEvatMiddleware.Application.Invoices;
 using GraEvatMiddleware.Application.Logging;
+using GraEvatMiddleware.Application.Operations;
 using GraEvatMiddleware.GraClient.Client;
 using GraEvatMiddleware.GraClient.Configuration;
 using GraEvatMiddleware.Infrastructure.Logging;
@@ -90,6 +91,116 @@ public sealed class GraEvatClientTests
         Assert.Contains("\"invoiceNumber\":\"CAN-001\"", handler.RequestBody, StringComparison.Ordinal);
         Assert.Contains("\"reference\":\"ORIGINAL-001\"", handler.RequestBody, StringComparison.Ordinal);
         Assert.Contains("\"totalAmount\":118", handler.RequestBody, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task CreditNote_UsesDocumentedNotePathAndPayload()
+    {
+        var handler = new RecordingResponseHandler(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(string.Empty)
+        });
+        using var httpClient = new HttpClient(handler);
+        var client = CreateStagingClient(httpClient);
+        var payload = new CreditDebitNoteCommand("NOTE-001", "GHS", 1m, 118m, "INCLUSIVE",
+            "Customer", "C0000000001", "GROUP-001", new DateOnly(2026, 11, 10), "Correction", "INVOICE",
+            [new CreditDebitNoteLineCommand("INV-001", new DateOnly(2026, 11, 9), 118m)]);
+
+        var result = await client.SubmitOperationAsync(CreateOperation("CreditNote", "NOTE-001", payload));
+
+        Assert.True(result.IsSuccessful);
+        Assert.EndsWith("/vsdc/api/v1/taxpayer/TIN-001/note", handler.RequestUri?.AbsoluteUri, StringComparison.Ordinal);
+        Assert.Contains("\"flag\":\"CREDIT_NOTE\"", handler.RequestBody, StringComparison.Ordinal);
+        Assert.Contains("\"noteLineFlag\":\"INVOICE\"", handler.RequestBody, StringComparison.Ordinal);
+        Assert.Contains("\"noteLines\"", handler.RequestBody, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task DebitNote_DerivesDocumentedDebitFlag()
+    {
+        var handler = new RecordingResponseHandler(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(string.Empty)
+        });
+        using var httpClient = new HttpClient(handler);
+        var client = CreateStagingClient(httpClient);
+        var payload = new CreditDebitNoteCommand("NOTE-002", "GHS", 1m, 118m, "INCLUSIVE",
+            "Customer", "C0000000001", "GROUP-001", new DateOnly(2026, 11, 10), null, "INVOICE",
+            [new CreditDebitNoteLineCommand("INV-001", new DateOnly(2026, 11, 9), 118m)]);
+
+        var result = await client.SubmitOperationAsync(CreateOperation("DebitNote", "NOTE-002", payload));
+
+        Assert.True(result.IsSuccessful);
+        Assert.Contains("\"flag\":\"DEBIT_NOTE\"", handler.RequestBody, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Statement_UsesPublishedMisspelledPathAndGroupInvoiceLines()
+    {
+        var handler = new RecordingResponseHandler(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(string.Empty)
+        });
+        using var httpClient = new HttpClient(handler);
+        var client = CreateStagingClient(httpClient);
+        var now = new DateTimeOffset(2026, 11, 10, 12, 0, 0, TimeSpan.Zero);
+        var payload = new StatementOfAccountCommand("GHS", 1m, 18m, 118m, 0m, "Customer",
+            "C0000000001", "GROUP-001", now, "INCLUSIVE",
+            [new StatementLineCommand("GHS", 1m, "INCLUSIVE", "INV-001", null, "INVOICE", 18m, 118m, 0m, now)]);
+
+        var result = await client.SubmitOperationAsync(CreateOperation("StatementOfAccount", "GROUP-001", payload));
+
+        Assert.True(result.IsSuccessful);
+        Assert.EndsWith("/vsdc/api/v1/taxpayer/TIN-001/statment_of_account", handler.RequestUri?.AbsoluteUri,
+            StringComparison.Ordinal);
+        Assert.Contains("\"groupInvoiceLines\"", handler.RequestBody, StringComparison.Ordinal);
+        Assert.Contains("\"totalLevies\":0", handler.RequestBody, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Inventory_UsesDocumentedPathAndAcceptsTopLevelSuccess()
+    {
+        var handler = new RecordingResponseHandler(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("{\"status\":\"SUCCESS\"}", System.Text.Encoding.UTF8, "application/json")
+        });
+        using var httpClient = new HttpClient(handler);
+        var client = CreateStagingClient(httpClient);
+        var payload = new InventorySubmissionCommand(new DateOnly(2026, 11, 10),
+            [new InventoryItemCommand("ITEM-001", "Item", 3m, "BATCH-001", 100m, new DateOnly(2027, 11, 10))]);
+
+        var result = await client.SubmitOperationAsync(CreateOperation("Inventory", "INVENTORY-20261110", payload));
+
+        Assert.True(result.IsSuccessful);
+        Assert.EndsWith("/vsdc/api/v1/taxpayer/TIN-001/inventory", handler.RequestUri?.AbsoluteUri,
+            StringComparison.Ordinal);
+        Assert.Contains("\"inventoryDate\":\"2026-11-10\"", handler.RequestBody, StringComparison.Ordinal);
+        Assert.Contains("\"expiryDate\":\"2027-11-10\"", handler.RequestBody, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("tin", "C0034186913", "/identification/tin/C0034186913")]
+    [InlineData("nationalId", "GHA-000XXXXXX-2", "/identification/nationalId/GHA-000XXXXXX-2")]
+    public async Task Identification_UsesDocumentedPathAndMapsData(
+        string kind,
+        string value,
+        string expectedPath)
+    {
+        var handler = new RecordingResponseHandler(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("{\"status\":\"SUCCESS\",\"data\":{\"tin\":\"C0034186913\",\"type\":\"TIN\",\"name\":\"Customer\",\"sector\":\"Services\",\"address\":\"Accra\"}}",
+                System.Text.Encoding.UTF8, "application/json")
+        });
+        using var httpClient = new HttpClient(handler);
+        var client = CreateStagingClient(httpClient);
+
+        var result = await client.ValidateIdentificationAsync(new GraIdentificationRequest(
+            Guid.NewGuid(), "correlation", "Identification", "TIN-001", "gra-secret-name", kind, value));
+
+        Assert.True(result.IsValid);
+        Assert.Equal("C0034186913", result.Tin);
+        Assert.EndsWith(expectedPath, handler.RequestUri?.AbsolutePath, StringComparison.Ordinal);
+        Assert.True(handler.HadSecurityKeyHeader);
     }
 
     [Theory]
@@ -301,6 +412,10 @@ public sealed class GraEvatClientTests
             [new InvoiceItemCommand("ITEM-1", string.Empty, "Service", 1, 118, 0, 0, 0, 0, 0, 0, 0, null, null)],
             reference),
         flag);
+
+    private static GraOperationSubmission CreateOperation(string operation, string documentNumber, object payload) =>
+        new(Guid.NewGuid(), Guid.NewGuid(), "correlation", "idempotency-key", operation, "TIN-001",
+            "gra-secret-name", documentNumber, payload);
 
     private sealed class FixedSecretProvider : IGraSecretProvider
     {

@@ -1,4 +1,5 @@
 using GraEvatMiddleware.Application.Abstractions;
+using GraEvatMiddleware.Application.Operations;
 using GraEvatMiddleware.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -86,6 +87,20 @@ internal sealed class CountingGraEvatClient : IGraEvatClient
 
     public int SubmissionCount => Volatile.Read(ref _submissionCount);
     public int ReconciliationCount => Volatile.Read(ref _reconciliationCount);
+
+    public async Task<GraSubmissionResult> SubmitOperationAsync(
+        GraOperationSubmission submission,
+        CancellationToken cancellationToken = default)
+    {
+        Interlocked.Increment(ref _submissionCount);
+        await Task.Delay(150, cancellationToken);
+        return new GraSubmissionResult(true, false, false, submission.DocumentNumber, null);
+    }
+
+    public Task<IdentificationResult> ValidateIdentificationAsync(
+        GraIdentificationRequest request,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(new IdentificationResult(true, request.Value, request.Kind, null, null, null, null));
 
     public async Task<GraSubmissionResult> SubmitInvoiceAsync(
         GraInvoiceSubmission submission,

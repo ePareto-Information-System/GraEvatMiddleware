@@ -71,7 +71,7 @@ public sealed class ExchangeLoggingMiddleware(
                 context.Request.Headers["Idempotency-Key"].FirstOrDefault(),
                 ExchangeDirection.Inbound, "ExternalClient", "Middleware",
                 context.GetEndpoint()?.DisplayName ?? context.Request.Path.Value ?? "Unknown",
-                context.Request.Method, context.Request.Path.Value ?? "/",
+                context.Request.Method, SanitizePath(context.Request.Path.Value),
                 sanitizer.SanitizeHeaders(ToDictionary(context.Request.Headers)), request.Content,
                 request.IsTruncated, statusCode,
                 sanitizer.SanitizeHeaders(ToDictionary(context.Response.Headers)), response.Content,
@@ -99,4 +99,13 @@ public sealed class ExchangeLoggingMiddleware(
             item => item.Key,
             item => item.Value.Select(value => value ?? string.Empty).ToArray(),
             StringComparer.OrdinalIgnoreCase);
+
+    private static string SanitizePath(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return "/";
+        var marker = path.IndexOf("/identifications/", StringComparison.OrdinalIgnoreCase);
+        if (marker < 0) return path;
+        var finalSeparator = path.LastIndexOf('/');
+        return finalSeparator > marker ? string.Concat(path.AsSpan(0, finalSeparator + 1), "[REDACTED]") : path;
+    }
 }

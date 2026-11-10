@@ -252,6 +252,87 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/credit-debit-notes:
+    post:
+      operationId: submitCreditDebitNote
+      description: Submits a credit or debit note against one or more invoice or purchase documents.
+      security: [{ TenantApiKey: [] }]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreditDebitNoteRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/OperationReplay' }
+        '201': { $ref: '#/components/responses/OperationCreated' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/statements-of-account:
+    post:
+      operationId: submitStatementOfAccount
+      security: [{ TenantApiKey: [] }]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StatementOfAccountRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/OperationReplay' }
+        '201': { $ref: '#/components/responses/OperationCreated' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/inventory:
+    post:
+      operationId: submitInventory
+      security: [{ TenantApiKey: [] }]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InventorySubmissionRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/OperationReplay' }
+        '201': { $ref: '#/components/responses/OperationCreated' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/identifications/tin/{tin}:
+    get:
+      operationId: validateTin
+      security: [{ TenantApiKey: [] }]
+      parameters:
+        - name: tin
+          in: path
+          required: true
+          schema: { type: string, minLength: 1 }
+      responses:
+        '200':
+          description: Normalized GRA identification result.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IdentificationResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/v1/identifications/ghana-card/{nationalId}:
+    get:
+      operationId: validateGhanaCard
+      security: [{ TenantApiKey: [] }]
+      parameters:
+        - name: nationalId
+          in: path
+          required: true
+          schema: { type: string, minLength: 1 }
+      responses:
+        '200':
+          description: Normalized GRA identification result.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IdentificationResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
   /api/v1/transactions/{transactionId}:
     get:
       operationId: getTransaction
@@ -317,6 +398,16 @@ components:
       content:
         application/json:
           schema: { $ref: '#/components/schemas/TransactionResponse' }
+    OperationReplay:
+      description: Existing operation transaction returned for an idempotent replay.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/OperationTransactionResponse' }
+    OperationCreated:
+      description: GRA operation transaction created.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/OperationTransactionResponse' }
   schemas:
     HealthResponse:
       type: object
@@ -453,6 +544,107 @@ components:
         exciseAmount: { type: number, minimum: 0, default: 0 }
         batchCode: { type: [string, 'null'], maxLength: 100 }
         expireDate: { type: [string, 'null'], format: date }
+    CreditDebitNoteRequest:
+      type: object
+      required: [noteNumber, noteType, currency, exchangeRate, noteAmount, calculationType, businessPartnerName, businessPartnerTin, groupReferenceId, transactionDate, noteLineType, noteLines]
+      properties:
+        noteNumber: { type: string, minLength: 1, maxLength: 100 }
+        noteType: { type: string, enum: [CREDIT, DEBIT] }
+        currency: { type: string, minLength: 3, maxLength: 10 }
+        exchangeRate: { type: number, exclusiveMinimum: 0 }
+        noteAmount: { type: number, exclusiveMinimum: 0 }
+        calculationType: { type: string, enum: [INCLUSIVE, EXCLUSIVE] }
+        businessPartnerName: { type: string, minLength: 1, maxLength: 200 }
+        businessPartnerTin: { type: string, minLength: 1, maxLength: 20 }
+        groupReferenceId: { type: string, minLength: 1, maxLength: 100 }
+        transactionDate: { type: string, format: date }
+        remarks: { type: [string, 'null'], maxLength: 500 }
+        noteLineType: { type: string, enum: [INVOICE, PURCHASE] }
+        noteLines:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/CreditDebitNoteLine' }
+    CreditDebitNoteLine:
+      type: object
+      required: [invoiceNumber, invoiceDate, invoiceAmount]
+      properties:
+        invoiceNumber: { type: string, minLength: 1, maxLength: 100 }
+        invoiceDate: { type: string, format: date }
+        invoiceAmount: { type: number, exclusiveMinimum: 0 }
+    StatementOfAccountRequest:
+      type: object
+      required: [currency, exchangeRate, totalVat, totalAmount, totalLevies, businessPartnerName, businessPartnerTin, groupReferenceId, transactionDate, calculationType, lines]
+      properties:
+        currency: { type: string, minLength: 3, maxLength: 10 }
+        exchangeRate: { type: number, exclusiveMinimum: 0 }
+        totalVat: { type: number, minimum: 0 }
+        totalAmount: { type: number, minimum: 0 }
+        totalLevies: { type: number, minimum: 0 }
+        businessPartnerName: { type: string, minLength: 1, maxLength: 200 }
+        businessPartnerTin: { type: string, minLength: 1, maxLength: 20 }
+        groupReferenceId: { type: string, minLength: 1, maxLength: 100 }
+        transactionDate: { type: string, format: date-time }
+        calculationType: { type: string, enum: [INCLUSIVE, EXCLUSIVE] }
+        lines:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/StatementLine' }
+    StatementLine:
+      type: object
+      required: [currency, exchangeRate, calculationType, invoiceNumber, flag, invoiceVat, invoiceAmount, invoiceLevies, transactionDate]
+      properties:
+        currency: { type: string, minLength: 3, maxLength: 10 }
+        exchangeRate: { type: number, exclusiveMinimum: 0 }
+        calculationType: { type: string, enum: [INCLUSIVE, EXCLUSIVE] }
+        invoiceNumber: { type: string, minLength: 1, maxLength: 100 }
+        reference: { type: [string, 'null'], maxLength: 100 }
+        flag: { type: string, enum: [INVOICE, REFUND, PARTIAL_REFUND, CREDIT_NOTE, DEBIT_NOTE, REFUND_CANCELATION] }
+        invoiceVat: { type: number, minimum: 0 }
+        invoiceAmount: { type: number, minimum: 0 }
+        invoiceLevies: { type: number, minimum: 0 }
+        transactionDate: { type: string, format: date-time }
+    InventorySubmissionRequest:
+      type: object
+      required: [inventoryDate, inventories]
+      properties:
+        inventoryDate: { type: string, format: date }
+        inventories:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/InventoryItem' }
+    InventoryItem:
+      type: object
+      required: [code, description, quantity, unitPrice]
+      properties:
+        code: { type: string, minLength: 1, maxLength: 100 }
+        description: { type: string, minLength: 1, maxLength: 250 }
+        quantity: { type: number, minimum: 0 }
+        batchCode: { type: [string, 'null'], maxLength: 100 }
+        unitPrice: { type: number, minimum: 0 }
+        expiryDate: { type: [string, 'null'], format: date }
+    OperationTransactionResponse:
+      type: object
+      required: [transactionId, documentNumber, status, correlationId, createdAt, updatedAt]
+      properties:
+        transactionId: { type: string, format: uuid }
+        documentNumber: { type: string }
+        status: { type: string, enum: [Received, Validating, Submitting, PendingGra, Succeeded, Rejected, TemporaryFailure, PermanentFailure] }
+        externalReference: { type: [string, 'null'] }
+        errorCode: { type: [string, 'null'] }
+        correlationId: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    IdentificationResponse:
+      type: object
+      required: [isValid]
+      properties:
+        isValid: { type: boolean }
+        tin: { type: [string, 'null'] }
+        type: { type: [string, 'null'] }
+        name: { type: [string, 'null'] }
+        sector: { type: [string, 'null'] }
+        address: { type: [string, 'null'] }
+        errorCode: { type: [string, 'null'] }
     TransactionResponse:
       type: object
       required: [transactionId, invoiceNumber, status, correlationId, createdAt, updatedAt]

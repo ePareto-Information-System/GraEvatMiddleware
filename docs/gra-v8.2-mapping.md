@@ -1,6 +1,6 @@
 # GRA E-VAT Version 8.2 Mapping
 
-Status: 8 of 12 documented GRA operation groups implemented; four remain
+Status: all 12 documented GRA operation groups implemented
 
 Source: https://documenter.getpostman.com/view/29809098/2sBXVeGCzK
 
@@ -10,6 +10,11 @@ The documented staging host is `vsdcstaging.vat-gh.com`. The implemented operati
 - `GET /vsdc/api/v1/taxpayer/{reference}/health`
 - `POST /vsdc/api/v1/taxpayer/{reference}/invoice/callback`
 - `POST /vsdc/api/v1/taxpayer/{reference}/cancellation`
+- `POST /vsdc/api/v1/taxpayer/{reference}/note`
+- `POST /vsdc/api/v1/taxpayer/{reference}/statment_of_account`
+- `GET /vsdc/api/v1/taxpayer/{reference}/identification/tin/{value}`
+- `GET /vsdc/api/v1/taxpayer/{reference}/identification/nationalId/{value}`
+- `POST /vsdc/api/v1/taxpayer/{reference}/inventory`
 
 | GRA v8.2 operation group | Middleware status |
 | --- | --- |
@@ -19,14 +24,14 @@ The documented staging host is `vsdcstaging.vat-gh.com`. The implemented operati
 | Purchase | Implemented |
 | Purchase return | Implemented |
 | Purchase return cancellation | Implemented |
-| Credit note / debit note | Not implemented |
-| Statement of account | Not implemented |
+| Credit note / debit note | Implemented |
+| Statement of account | Implemented |
 | Health check | Implemented |
-| TIN validator | Not implemented |
-| Inventory | Not implemented |
+| TIN and Ghana Card validator | Implemented |
+| Inventory | Implemented |
 | Invoice callback | Implemented |
 
-This GRA-facing count is separate from the canonical middleware API, which exposes 19 operations to ERP clients and administrators. A GRA operation is added only after its canonical middleware schema, permissions, idempotency behaviour and response mapping have been agreed; the external GRA transport is not exposed directly to callers.
+This GRA-facing count is separate from the canonical middleware API, which now exposes 24 operations to ERP clients and administrators. The external GRA transport and `security_key` remain hidden from callers.
 
 All operations authenticate with the `security_key` request header. The taxpayer reference in the URL and the key must belong together.
 
@@ -40,6 +45,6 @@ The client preserves the documented GRA error code and also assigns an internal 
 
 The shared invoice transport uses `REFUND`, `PARTIAL_REFUND`, `PURCHASE` and `PURCHASE_RETURN` flags. Refunds and purchase returns carry the original document reference. Cancellation uses the documented `/cancellation` transport and its exact published flags, `REFUND_CANCELATION` and `PURCHASE_RETURN_CANCELATION`.
 
-Credit/debit notes, statements, TIN validation and inventory remain outside the implemented slice.
+Credit/debit notes use `CREDIT_NOTE` or `DEBIT_NOTE`; the caller selects `CREDIT` or `DEBIT` and cannot inject a GRA flag. Statements use GRA's published `statment_of_account` path spelling and map canonical `lines` to `groupInvoiceLines`. Identification validation is read-only and therefore does not require idempotency. Inventory, notes and statements use tenant-scoped idempotency and durable transaction/audit records. They are not automatically retried because GRA publishes no authoritative callback for reconciling an uncertain result.
 
 The taxpayer reference is GRA-facing tenant configuration. The GRA `security_key` is a secret and must never be included in this document, application settings committed to source control, logs or API responses.
