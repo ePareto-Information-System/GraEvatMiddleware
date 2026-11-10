@@ -35,10 +35,16 @@ Exchange-log cleanup runs as a hosted service. `ExchangeLogging:RetentionDays` d
 
 Back up the database with encrypted PostgreSQL backups and test restoration into an isolated environment. A restore test must confirm tenants, credential hashes, transactions, audit events, exchange logs, retry jobs and migration history. Raw secret values are restored from the secret manager, not from database backups.
 
+Follow `recovery-and-continuity.md` for the backup template, isolated restore safety checks, outage ordering and drill evidence. Never restore over the live database as a test.
+
 ## Incident handling
 
 For a compromised tenant key, rotate or revoke the credential and inspect tenant-scoped audit/exchange records. For a compromised GRA key, disable GRA integration, rotate the external secret, update only the secret-store value and reconcile pending transactions before re-enabling. For uncertain invoice delivery, never submit manually with a new idempotency key; use transaction status and callback reconciliation.
 
+Use `incident-response.md` for containment, evidence, escalation and recovery. Keep contact details in the organization-controlled incident directory rather than source control.
+
 ## Rollback
 
 Roll back application binaries only when the previous release is schema-compatible. Do not automatically roll back a migration containing production data. Restore from backup only through an approved recovery decision, then reconcile any transaction whose GRA outcome may have occurred after the backup time.
+
+Use `release-checklist.md` for every release and `production-readiness-checklist.md` for the go-live gate. Track external sign-offs and exercises in `external-evidence-register.md`.
