@@ -1,0 +1,22 @@
+name: Safe Performance
+values:
+  - key: baseUrl
+    value: 'http://localhost:5189'
+    enabled: true
+    type: default
+  - key: apiKey
+    value: ''
+    enabled: false
+    type: secret
+  - key: transactionId
+    value: ''
+    enabled: false
+    type: default
+  - key: replayIdempotencyKey
+    value: ''
+    enabled: false
+    type: secret
+  - key: replayInvoiceNumber
+    value: ''
+    enabled: false
+    type: default

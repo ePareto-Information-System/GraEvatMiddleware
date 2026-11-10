@@ -12,6 +12,59 @@ GraClient -> Application -> Domain
 
 `Domain` has no project dependencies. `Application` defines use cases and outbound interfaces. `Infrastructure` implements persistence, authentication, secrets and auditing. `GraClient` isolates the GRA v8.2 transport contract. `Api` is the HTTP host and composition root.
 
+## System context and boundary
+
+```mermaid
+flowchart LR
+    ERP[Odoo or another API client] -->|Canonical API v1 and tenant key| API[ASP.NET Core middleware]
+    Admin[Authorized operator] -->|Administrative API and admin credential| API
+    API -->|EF Core| DB[(PostgreSQL)]
+    API -->|Secret name only| Secrets[Approved secret store]
+    API -->|GRA v8.2 HTTPS and security_key| GRA[GRA eVAT]
+    API -->|Structured operational telemetry| Monitor[Approved monitoring platform]
+```
+
+Odoo constructs and consumes the canonical contract. It does not authenticate directly to GRA or contain GRA-specific paths, flags or retry logic. The middleware owns tenant authentication, validation, mapping, external communication, authoritative transaction status, audit and recovery.
+
+## Component responsibilities
+
+| Component | Responsibility | Must not contain |
+| --- | --- | --- |
+| Api | HTTP routing, authentication boundary, validation, rate limiting and problem responses | GRA transport mapping or database business rules |
+| Application | Commands, use-case interfaces and canonical result contracts | EF Core or HTTP implementation details |
+| Domain | Tenant, credential, transaction and retry invariants | Framework dependencies |
+| Infrastructure | PostgreSQL, authentication, secret lookup, logging, monitoring and workers | Odoo-specific logic |
+| GraClient | Exact GRA paths, headers, payload/response mapping and transport safety | Tenant database access or API presentation logic |
+
+## Transaction lifecycle
+
+```mermaid
+stateDiagram-v2
+    [*] --> Received
+    Received --> Validating
+    Validating --> Submitting
+    Submitting --> Succeeded
+    Submitting --> Rejected
+    Submitting --> PendingGra
+    Submitting --> TemporaryFailure
+    PendingGra --> Submitting: leased recovery
+    TemporaryFailure --> Submitting: eligible retry
+    PendingGra --> Succeeded: callback reconciliation
+    TemporaryFailure --> Succeeded: callback reconciliation
+```
+
+The middleware is authoritative for this state. Clients query the transaction or repeat the same request with the same idempotency key; they do not invent a replacement submission after a timeout.
+
+## Persistence model
+
+PostgreSQL stores tenants, credential hashes, transaction state, audit events, sanitized exchange records and retry jobs. Foreign keys and tenant-filtered queries preserve ownership. Retry payloads contain confidential fiscal data needed for safe recovery and therefore require encrypted storage/backups and restricted database access in production.
+
+## Deployment and horizontal scaling
+
+The HTTP application is stateless apart from PostgreSQL and the external secret provider. Multiple instances may share the database. Idempotency uniqueness prevents duplicate transactions and database leases prevent multiple retry workers from processing the same job. Rate limiting is currently instance-local; a production proxy or distributed limiter is required when an approved aggregate limit must span instances.
+
+Production topology remains a hosting decision. At minimum it requires TLS termination, a private PostgreSQL path, a managed secret store, central logs/metrics, health-based traffic removal and one controlled migration step per release.
+
 The Odoo-facing tenant credential and the tenant's GRA security key are separate trust boundaries. Tenant identity is resolved from the middleware credential rather than accepted from request data.
 
 ## Exchange logging
@@ -28,7 +81,7 @@ The Odoo-facing tenant credential and the tenant's GRA security key are separate
 
 `GraEvatClient` accepts outbound traffic only when the configured environment is `Staging`, the base URL uses HTTPS and the host is explicitly present in `GraApi:AllowedHosts`. Automatic redirect following is disabled. These checks prevent a configuration mistake from sending `security_key` to a production or unrelated host during the staging phase.
 
-The v8.2 staging integration uses the documented invoice, cancellation, health and invoice-callback operations. The callback is the authoritative reconciliation operation for an invoice-shaped submission whose result is uncertain.
+The v8.2 staging integration covers all 12 documented operation groups. The callback is the authoritative reconciliation operation only for invoice-shaped submissions. Notes, statements and inventory are left pending after ambiguous delivery because the published contract provides no equivalent callback.
 
 ## Retry and reconciliation
 
@@ -53,3 +106,7 @@ The global fixed-window limiter partitions requests by a SHA-256 fingerprint of 
 Request telemetry is captured after correlation ID assignment. Structured completion logs and in-process aggregate counters record status, duration, server failures and rate-limit responses without retaining credentials. The admin-protected operations endpoint combines those counters with PostgreSQL retry and pending-transaction aggregates for alerting.
 
 A hosted retention worker periodically invokes the scoped exchange-log retention service. Cleanup age, startup delay and interval are configuration-driven so every deployed instance applies the same approved policy.
+
+## Decision records
+
+The `docs/adr` directory records the architecture decisions for language/runtime, PostgreSQL, credential protection, GRA secret indirection, reconciliation, conservative retry, sanitized logging and API versioning. These records document decisions; management approval of the C# deviation, production hosting and managed secrets remains an external gate.

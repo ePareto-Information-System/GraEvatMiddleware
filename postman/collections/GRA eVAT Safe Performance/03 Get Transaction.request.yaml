@@ -1,0 +1,20 @@
+$kind: http-request
+url: '{{baseUrl}}/api/v1/transactions/:transactionId'
+method: GET
+pathVariables:
+  - key: transactionId
+    value: '{{transactionId}}'
+auth:
+  type: apikey
+  credentials:
+    - key: key
+      value: X-API-Key
+    - key: value
+      value: '{{apiKey}}'
+    - key: in
+      value: header
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('transaction belongs to the test tenant', () => pm.response.to.have.status(200));
+order: 3000

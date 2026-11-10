@@ -174,6 +174,19 @@ The canonical contract is documented in [docs/api-contract-v1.md](docs/api-contr
 
 Operational guidance is in [docs/operations-runbook.md](docs/operations-runbook.md), [docs/tenant-onboarding.md](docs/tenant-onboarding.md), [docs/threat-model.md](docs/threat-model.md) and [docs/test-evidence.md](docs/test-evidence.md).
 
+Production-readiness documentation:
+
+- [Requirements traceability](docs/requirements-traceability.md)
+- [Architecture and decisions](docs/architecture.md) and [ADRs](docs/adr)
+- [GRA field mapping](docs/gra-field-mapping.md)
+- [Developer guide](docs/developer-guide.md) and [API consumer guide](docs/api-consumer-guide.md)
+- [Administrator guide](docs/administrator-guide.md) and [support troubleshooting](docs/support-troubleshooting.md)
+- [Configuration reference](docs/configuration-reference.md)
+- [Security assurance](docs/security-assurance.md)
+- [Recovery and continuity](docs/recovery-and-continuity.md) and [incident response](docs/incident-response.md)
+- [Safe performance testing](docs/performance-testing.md)
+- [Release checklist](docs/release-checklist.md), [production readiness](docs/production-readiness-checklist.md) and [external evidence register](docs/external-evidence-register.md)
+
 Reusable API checks are documented in [docs/postman-testing.md](docs/postman-testing.md). The isolated PostgreSQL concurrency suite is documented in [docs/postgresql-concurrency-testing.md](docs/postgresql-concurrency-testing.md).
 
 ## Rate limiting

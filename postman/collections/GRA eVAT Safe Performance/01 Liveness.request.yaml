@@ -1,0 +1,10 @@
+$kind: http-request
+url: '{{baseUrl}}/api/v1/health/live'
+method: GET
+auth:
+  type: noauth
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('liveness is successful', () => pm.response.to.have.status(200));
+order: 1000
