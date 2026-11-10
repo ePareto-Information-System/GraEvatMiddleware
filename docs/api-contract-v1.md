@@ -25,10 +25,17 @@ The canonical API is exposed under `/api/v1`. It is independent of the GRA trans
 - `POST /api/v1/admin/tenants/{tenantId}/terminate`
 - `PUT /api/v1/admin/tenants/{tenantId}/configuration`
 - `POST /api/v1/invoices`
+- `POST /api/v1/refunds`
+- `POST /api/v1/purchases`
+- `POST /api/v1/purchase-returns`
+- `POST /api/v1/refund-cancellations`
+- `POST /api/v1/purchase-return-cancellations`
 - `GET /api/v1/transactions/{transactionId}`
 - `GET /api/v1/audit?limit=50`
 
-Invoice submission requires an `Idempotency-Key`. Reusing a key with the same body returns the existing transaction. Reusing it with a different body returns HTTP 409.
+Every fiscal submission requires an `Idempotency-Key`. Reusing a key for the same operation and body returns the existing transaction. Reusing it for the same operation with a different body returns HTTP 409. Keys are isolated by tenant and operation.
+
+Refunds require the original GRA `reference` and a `refundType` of `FULL` or `PARTIAL`. Purchase returns require the original purchase reference. Refund and purchase-return cancellation bodies contain the cancellation invoice number, original reference, transaction timestamp and positive total amount. The middleware selects the exact GRA flag; callers cannot supply or override it.
 
 The transaction resource may report `PendingGra` while the submission is being reconciled. Callers must use transaction lookup rather than resubmitting with a new idempotency key. `Succeeded` and `Rejected` are terminal for the current invoice slice. Retry and callback operations are internal middleware responsibilities and are not exposed as Odoo-facing endpoints.
 
@@ -42,4 +49,4 @@ The administrative operations status endpoint reports aggregate request counts a
 
 The machine-readable source of truth for this slice is `docs/openapi-v1.yaml`.
 
-Refund, purchase, return, inventory, TIN validation and callback operations will be added after their canonical schemas and GRA mappings are approved.
+Credit/debit note, statement, inventory and TIN-validation operations remain for later phases. GRA callback handling is an internal recovery control and is not exposed to callers.

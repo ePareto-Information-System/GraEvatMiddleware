@@ -170,6 +170,88 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/refunds:
+    post:
+      operationId: submitRefund
+      description: Submits a full or partial refund against an existing GRA invoice reference.
+      security: [{ TenantApiKey: [] }]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RefundRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/IdempotentReplay' }
+        '201': { $ref: '#/components/responses/TransactionCreated' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/purchases:
+    post:
+      operationId: submitPurchase
+      security: [{ TenantApiKey: [] }]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InvoiceRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/IdempotentReplay' }
+        '201': { $ref: '#/components/responses/TransactionCreated' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/purchase-returns:
+    post:
+      operationId: submitPurchaseReturn
+      description: Submits a purchase return; reference identifies the original purchase.
+      security: [{ TenantApiKey: [] }]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReferencedDocumentRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/IdempotentReplay' }
+        '201': { $ref: '#/components/responses/TransactionCreated' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/refund-cancellations:
+    post:
+      operationId: submitRefundCancellation
+      security: [{ TenantApiKey: [] }]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CancellationRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/IdempotentReplay' }
+        '201': { $ref: '#/components/responses/TransactionCreated' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/purchase-return-cancellations:
+    post:
+      operationId: submitPurchaseReturnCancellation
+      security: [{ TenantApiKey: [] }]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CancellationRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/IdempotentReplay' }
+        '201': { $ref: '#/components/responses/TransactionCreated' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
   /api/v1/transactions/{transactionId}:
     get:
       operationId: getTransaction
@@ -225,6 +307,16 @@ components:
     Conflict: { description: Resource or idempotency conflict. }
     ValidationError: { description: Canonical request validation failed. }
     TooManyRequests: { description: Configured request rate limit exceeded. }
+    IdempotentReplay:
+      description: Existing transaction returned for an idempotent replay.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/TransactionResponse' }
+    TransactionCreated:
+      description: Fiscal transaction created.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/TransactionResponse' }
   schemas:
     HealthResponse:
       type: object
@@ -316,10 +408,33 @@ components:
         discountType: { type: [string, 'null'], enum: [GENERAL, SELECTIVE, null] }
         discountAmount: { type: number, minimum: 0, default: 0 }
         groupReferenceId: { type: [string, 'null'], maxLength: 50 }
+        reference: { type: [string, 'null'], maxLength: 50, description: Original GRA document reference when required by the operation. }
         items:
           type: array
           minItems: 1
           items: { $ref: '#/components/schemas/InvoiceItem' }
+    ReferencedDocumentRequest:
+      allOf:
+        - { $ref: '#/components/schemas/InvoiceRequest' }
+        - type: object
+          required: [reference]
+          properties:
+            reference: { type: string, minLength: 1, maxLength: 50 }
+    RefundRequest:
+      allOf:
+        - { $ref: '#/components/schemas/ReferencedDocumentRequest' }
+        - type: object
+          required: [refundType]
+          properties:
+            refundType: { type: string, enum: [FULL, PARTIAL] }
+    CancellationRequest:
+      type: object
+      required: [invoiceNumber, reference, transactionDate, totalAmount]
+      properties:
+        invoiceNumber: { type: string, minLength: 1, maxLength: 100 }
+        reference: { type: string, minLength: 1, maxLength: 50 }
+        transactionDate: { type: string, format: date-time }
+        totalAmount: { type: number, exclusiveMinimum: 0 }
     InvoiceItem:
       type: object
       required: [itemCode, itemCategory, description, quantity, unitPrice, levyAmountA, levyAmountB, levyAmountC, levyAmountD, levyAmountE]

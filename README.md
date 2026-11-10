@@ -15,10 +15,11 @@ Multi-tenant ASP.NET Core middleware that exposes a canonical API for Odoo and i
 - Tenant registration, activation, suspension, irreversible termination and configuration updates
 - Per-tenant API key issuance, atomic rotation and revocation with HMAC-SHA256 hashing
 - Canonical invoice submission endpoint for Odoo, Python and other HTTP clients
+- Canonical full/partial refund, refund-cancellation, purchase, purchase-return and return-cancellation endpoints
 - Tenant-scoped idempotency and transaction lookup
 - PostgreSQL persistence, initial EF Core migration and audit events
 - Sanitized inbound and outbound request/response exchange logs
-- GRA v8.2 invoice adapter with secret indirection and conservative timeout handling
+- GRA v8.2 invoice and cancellation adapters with exact operation flags, secret indirection and conservative timeout handling
 - Durable GRA retry jobs with lease-based multi-instance claiming and callback-first reconciliation
 - Correlation IDs, RFC 7807 errors and health endpoint
 - Tenant-scoped audit lookup and configurable request rate limiting

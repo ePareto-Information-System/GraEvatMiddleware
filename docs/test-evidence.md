@@ -12,6 +12,7 @@ Ordinary test runs use an in-memory database and a controlled GRA substitute. Th
 - Tenant-isolated transaction and audit lookup
 - Validation, authentication, conflict and rate-limit problem codes
 - Tenant-scoped idempotent replay and changed-payload rejection
+- Refund, partial-refund, purchase, purchase-return and cancellation routing with exact GRA flags
 - Sanitized inbound/outbound logging and retention deletion
 - GRA success, rejection, timeout and temporary-failure handling
 - Callback-first ambiguous reconciliation
@@ -26,9 +27,9 @@ Ordinary test runs use an in-memory database and a controlled GRA substitute. Th
 - Hosted exchange-log retention cleanup registration
 - Architecture dependency boundary
 - PostgreSQL-only concurrency checks for duplicate submission, retry-worker claiming and expired-lease recovery
-- Postman contract and local workflow linting for all 14 operations and nine reusable regression requests
+- Postman contract and local workflow linting for all 19 operations and nine reusable regression requests
 
-The current ordinary suite contains 58 passing tests: 32 unit tests, 25 integration tests and one architecture test. Three additional PostgreSQL concurrency tests are gated by an isolated test-database connection string. The separate real GRA staging test remains skipped unless explicitly enabled with approved staging configuration.
+The release verification run completed 79 passing tests: 38 unit tests, 40 integration tests and one architecture test. Three PostgreSQL concurrency tests remain gated by an isolated test-database connection string. The real GRA staging test also remains skipped unless explicitly enabled with approved staging configuration.
 
 ## Manual evidence still required
 

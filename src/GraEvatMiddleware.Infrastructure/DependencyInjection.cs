@@ -44,6 +44,7 @@ public static class DependencyInjection
         services.AddScoped<IApiKeyAuthenticator, ApiKeyAuthenticator>();
         services.AddScoped<InvoiceService>();
         services.AddScoped<IInvoiceService>(provider => provider.GetRequiredService<InvoiceService>());
+        services.AddScoped<IFiscalTransactionService>(provider => provider.GetRequiredService<InvoiceService>());
         services.AddScoped<ITransactionQueryService>(provider => provider.GetRequiredService<InvoiceService>());
         services.AddScoped<IGraSecretProvider, ConfigurationGraSecretProvider>();
         services.AddSingleton<IExchangeContentSanitizer, SensitiveDataSanitizer>();

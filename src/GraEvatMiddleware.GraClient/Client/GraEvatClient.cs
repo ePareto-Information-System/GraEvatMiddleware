@@ -70,7 +70,7 @@ public sealed class GraEvatClient(
         }
 
         var relativeUrl = $"vsdc/api/v1/taxpayer/{Uri.EscapeDataString(submission.TaxpayerReference)}/invoice";
-        var payload = ToGraPayload(submission.Invoice);
+        var payload = ToGraPayload(submission.Invoice, submission.GraFlag);
         using var request = new HttpRequestMessage(
             HttpMethod.Post,
             new Uri(new Uri(baseUri.AbsoluteUri.TrimEnd('/') + "/"), relativeUrl));
@@ -113,6 +113,78 @@ public sealed class GraEvatClient(
         }
     }
 
+    public async Task<GraSubmissionResult> SubmitCancellationAsync(
+        GraCancellationSubmission submission,
+        CancellationToken cancellationToken = default)
+    {
+        var configurationError = ValidateConfiguration(out var baseUri);
+        if (configurationError is not null)
+        {
+            return new GraSubmissionResult(false, true, false, null, configurationError, GraFailureKind.Configuration);
+        }
+
+        var securityKey = await secretProvider.GetSecretAsync(
+            submission.SecurityKeySecretName,
+            cancellationToken);
+        if (string.IsNullOrWhiteSpace(securityKey))
+        {
+            return new GraSubmissionResult(false, true, false, null, "GRA_SECRET_NOT_CONFIGURED", GraFailureKind.Configuration);
+        }
+
+        var relativeUrl = $"vsdc/api/v1/taxpayer/{Uri.EscapeDataString(submission.TaxpayerReference)}/cancellation";
+        var payload = new
+        {
+            invoiceNumber = submission.Cancellation.InvoiceNumber,
+            reference = submission.Cancellation.Reference,
+            userName = "middleware",
+            flag = submission.GraFlag,
+            transactionDate = submission.Cancellation.TransactionDate.ToString("O"),
+            totalAmount = submission.Cancellation.TotalAmount
+        };
+        var requestBody = JsonSerializer.Serialize(payload);
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            new Uri(new Uri(baseUri!.AbsoluteUri.TrimEnd('/') + "/"), relativeUrl));
+        request.Headers.Add("security_key", securityKey);
+        request.Content = JsonContent.Create(payload);
+        var stopwatch = Stopwatch.StartNew();
+
+        HttpResponseMessage? response = null;
+        string? responseBody = null;
+        try
+        {
+            response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            stopwatch.Stop();
+            await TryWriteCancellationExchangeAsync(submission, relativeUrl, requestBody, null, null,
+                stopwatch.ElapsedMilliseconds, ExchangeOutcome.Unknown, "GRA_TIMEOUT_STATUS_UNKNOWN");
+            throw;
+        }
+        catch (HttpRequestException)
+        {
+            stopwatch.Stop();
+            await TryWriteCancellationExchangeAsync(submission, relativeUrl, requestBody, null, null,
+                stopwatch.ElapsedMilliseconds, ExchangeOutcome.Failed, "GRA_COMMUNICATION_STATUS_UNKNOWN");
+            throw;
+        }
+
+        using (response)
+        {
+            stopwatch.Stop();
+            var result = response.IsSuccessStatusCode && string.IsNullOrWhiteSpace(responseBody)
+                ? new GraSubmissionResult(true, false, false, submission.Cancellation.Reference, null)
+                : MapResponse(response, responseBody);
+            var outcome = result.IsSuccessful ? ExchangeOutcome.Succeeded :
+                result.IsRejected ? ExchangeOutcome.Rejected : ExchangeOutcome.Unknown;
+            await TryWriteCancellationExchangeAsync(submission, relativeUrl, requestBody, response,
+                responseBody, stopwatch.ElapsedMilliseconds, outcome, result.ErrorCode);
+            return result;
+        }
+    }
+
     public async Task<GraReconciliationResult> ReconcileInvoiceAsync(
         GraInvoiceReconciliation reconciliation,
         CancellationToken cancellationToken = default)
@@ -132,7 +204,12 @@ public sealed class GraEvatClient(
         }
 
         var relativeUrl = $"vsdc/api/v1/taxpayer/{Uri.EscapeDataString(reconciliation.TaxpayerReference)}/invoice/callback";
-        var payload = new { reference = string.Empty, invoiceNumber = reconciliation.InvoiceNumber, flag = "INVOICE" };
+        var payload = new
+        {
+            reference = reconciliation.Reference ?? string.Empty,
+            invoiceNumber = reconciliation.InvoiceNumber,
+            flag = reconciliation.GraFlag
+        };
         var requestBody = JsonSerializer.Serialize(payload);
         using var request = new HttpRequestMessage(
             HttpMethod.Post,
@@ -426,7 +503,56 @@ public sealed class GraEvatClient(
         }
     }
 
-    private static object ToGraPayload(InvoiceCommand invoice)
+    private async Task TryWriteCancellationExchangeAsync(
+        GraCancellationSubmission submission,
+        string relativeUrl,
+        string requestBody,
+        HttpResponseMessage? response,
+        string? responseBody,
+        long durationMilliseconds,
+        ExchangeOutcome outcome,
+        string? errorCode)
+    {
+        if (!exchangeOptions.Value.Enabled)
+        {
+            return;
+        }
+
+        try
+        {
+            var captureBodies = exchangeOptions.Value.CaptureBodies;
+            var maximumCharacters = exchangeOptions.Value.MaximumBodyCharacters;
+            var requestContent = captureBodies
+                ? sanitizer.SanitizeBody(requestBody, "application/json", maximumCharacters)
+                : new SanitizedContent(null, false, false);
+            var responseContent = captureBodies
+                ? sanitizer.SanitizeBody(responseBody, response?.Content.Headers.ContentType?.ToString(), maximumCharacters)
+                : new SanitizedContent(null, false, false);
+            var requestHeaders = sanitizer.SanitizeHeaders(new Dictionary<string, string[]>
+            {
+                ["security_key"] = ["present"],
+                ["Content-Type"] = ["application/json"]
+            });
+            var responseHeaders = response is null ? null : sanitizer.SanitizeHeaders(
+                response.Headers.Concat(response.Content.Headers)
+                    .ToDictionary(item => item.Key, item => item.Value.ToArray(), StringComparer.OrdinalIgnoreCase));
+
+            await exchangeWriter.WriteAsync(new IntegrationExchangeRecord(
+                submission.TenantId, submission.TransactionId, submission.CorrelationId,
+                submission.IdempotencyKey, ExchangeDirection.Outbound, "Middleware", "GRA",
+                submission.Operation, HttpMethod.Post.Method, relativeUrl, requestHeaders,
+                requestContent.Content, requestContent.IsTruncated, (int?)response?.StatusCode,
+                responseHeaders, responseContent.Content, responseContent.IsTruncated,
+                durationMilliseconds, 1, outcome, errorCode, DateTimeOffset.UtcNow),
+                CancellationToken.None);
+        }
+        catch
+        {
+            // Exchange logging must never change the result of a tax operation.
+        }
+    }
+
+    private static object ToGraPayload(InvoiceCommand invoice, string graFlag)
     {
         return new
         {
@@ -435,7 +561,7 @@ public sealed class GraEvatClient(
             invoiceNumber = invoice.InvoiceNumber,
             totalLevy = invoice.TotalLevy,
             userName = "middleware",
-            flag = "INVOICE",
+            flag = graFlag,
             calculationType = invoice.CalculationType,
             totalVat = invoice.TotalVat,
             transactionDate = invoice.TransactionDate.ToString("yyyy-MM-dd"),
@@ -448,7 +574,7 @@ public sealed class GraEvatClient(
             discountType = invoice.DiscountType,
             taxType = "STANDARD",
             discountAmount = invoice.DiscountAmount,
-            reference = string.Empty,
+            reference = invoice.Reference ?? string.Empty,
             groupReferenceId = invoice.GroupReferenceId ?? string.Empty,
             purchaseOrderReference = string.Empty,
             items = invoice.Items.Select(ToGraItem).ToArray()

@@ -39,6 +39,60 @@ public sealed class GraEvatClientTests
     }
 
     [Theory]
+    [InlineData("REFUND")]
+    [InlineData("PARTIAL_REFUND")]
+    [InlineData("PURCHASE")]
+    [InlineData("PURCHASE_RETURN")]
+    public async Task FiscalDocument_UsesDocumentedInvoicePathFlagAndReference(string flag)
+    {
+        var handler = new RecordingResponseHandler(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("{\"response\":{\"status\":\"SUCCESS\"}}",
+                System.Text.Encoding.UTF8, "application/json")
+        });
+        using var httpClient = new HttpClient(handler);
+        var client = CreateStagingClient(httpClient);
+
+        var result = await client.SubmitInvoiceAsync(CreateSubmission(flag, "ORIGINAL-001"));
+
+        Assert.True(result.IsSuccessful);
+        Assert.EndsWith("/vsdc/api/v1/taxpayer/TIN-001/invoice", handler.RequestUri?.AbsoluteUri,
+            StringComparison.Ordinal);
+        Assert.Contains($"\"flag\":\"{flag}\"", handler.RequestBody, StringComparison.Ordinal);
+        Assert.Contains("\"reference\":\"ORIGINAL-001\"", handler.RequestBody, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("REFUND_CANCELATION")]
+    [InlineData("PURCHASE_RETURN_CANCELATION")]
+    public async Task Cancellation_UsesDocumentedPathAndExactFlag(string flag)
+    {
+        var handler = new RecordingResponseHandler(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(string.Empty)
+        });
+        using var httpClient = new HttpClient(handler);
+        var client = CreateStagingClient(httpClient);
+        var submission = new GraCancellationSubmission(
+            Guid.NewGuid(), Guid.NewGuid(), "correlation", "idempotency-key", "Cancellation",
+            "TIN-001", "gra-secret-name",
+            new CancellationCommand("CAN-001", "ORIGINAL-001",
+                new DateTimeOffset(2026, 11, 9, 12, 0, 0, TimeSpan.Zero), 118m),
+            flag);
+
+        var result = await client.SubmitCancellationAsync(submission);
+
+        Assert.True(result.IsSuccessful);
+        Assert.Equal("ORIGINAL-001", result.ExternalReference);
+        Assert.EndsWith("/vsdc/api/v1/taxpayer/TIN-001/cancellation", handler.RequestUri?.AbsoluteUri,
+            StringComparison.Ordinal);
+        Assert.Contains($"\"flag\":\"{flag}\"", handler.RequestBody, StringComparison.Ordinal);
+        Assert.Contains("\"invoiceNumber\":\"CAN-001\"", handler.RequestBody, StringComparison.Ordinal);
+        Assert.Contains("\"reference\":\"ORIGINAL-001\"", handler.RequestBody, StringComparison.Ordinal);
+        Assert.Contains("\"totalAmount\":118", handler.RequestBody, StringComparison.Ordinal);
+    }
+
+    [Theory]
     [InlineData("Production", "https://vsdcstaging.vat-gh.com/", "GRA_ENVIRONMENT_NOT_ALLOWED")]
     [InlineData("Staging", "http://vsdcstaging.vat-gh.com/", "GRA_HTTPS_REQUIRED")]
     [InlineData("Staging", "https://example.com/", "GRA_HOST_NOT_ALLOWED")]
@@ -226,13 +280,27 @@ public sealed class GraEvatClientTests
         Options.Create(options),
         Options.Create(new ExchangeLoggingOptions()));
 
-    private static GraInvoiceSubmission CreateSubmission() => new(
+    private static GraEvatClient CreateStagingClient(HttpClient httpClient) => CreateClient(
+        httpClient,
+        new GraApiOptions
+        {
+            Enabled = true,
+            Environment = "Staging",
+            BaseUrl = "https://vsdcstaging.vat-gh.com/",
+            AllowedHosts = ["vsdcstaging.vat-gh.com"]
+        });
+
+    private static GraInvoiceSubmission CreateSubmission(
+        string flag = "INVOICE",
+        string? reference = null) => new(
         Guid.NewGuid(), Guid.NewGuid(), "correlation", "idempotency-key", "Invoice", "TIN-001",
         "gra-secret-name",
         new InvoiceCommand(
             "INV-001", "GHS", 1, "INCLUSIVE", new DateOnly(2026, 11, 3), 18, 0, 118,
             "Customer", "C0000000001", "NORMAL", null, 0, null,
-            [new InvoiceItemCommand("ITEM-1", string.Empty, "Service", 1, 118, 0, 0, 0, 0, 0, 0, 0, null, null)]));
+            [new InvoiceItemCommand("ITEM-1", string.Empty, "Service", 1, 118, 0, 0, 0, 0, 0, 0, 0, null, null)],
+            reference),
+        flag);
 
     private sealed class FixedSecretProvider : IGraSecretProvider
     {

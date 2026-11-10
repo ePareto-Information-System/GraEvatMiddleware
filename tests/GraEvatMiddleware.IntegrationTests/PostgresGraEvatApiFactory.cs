@@ -102,6 +102,15 @@ internal sealed class CountingGraEvatClient : IGraEvatClient
             true, false, false, $"GRA-{submission.Invoice.InvoiceNumber}", null);
     }
 
+    public async Task<GraSubmissionResult> SubmitCancellationAsync(
+        GraCancellationSubmission submission,
+        CancellationToken cancellationToken = default)
+    {
+        Interlocked.Increment(ref _submissionCount);
+        await Task.Delay(150, cancellationToken);
+        return new GraSubmissionResult(true, false, false, submission.Cancellation.Reference, null);
+    }
+
     public async Task<GraReconciliationResult> ReconcileInvoiceAsync(
         GraInvoiceReconciliation reconciliation,
         CancellationToken cancellationToken = default)

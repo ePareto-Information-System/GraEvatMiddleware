@@ -3,7 +3,7 @@ using GraEvatMiddleware.Application.Invoices;
 
 namespace GraEvatMiddleware.Api.Contracts;
 
-public sealed class InvoiceRequest
+public class FiscalDocumentRequest
 {
     [Required, StringLength(100, MinimumLength = 1)]
     public string InvoiceNumber { get; init; } = string.Empty;
@@ -46,6 +46,9 @@ public sealed class InvoiceRequest
     [StringLength(50)]
     public string? GroupReferenceId { get; init; }
 
+    [StringLength(50)]
+    public string? Reference { get; init; }
+
     [Required, MinLength(1)]
     public List<InvoiceItemRequest> Items { get; init; } = [];
 
@@ -66,8 +69,37 @@ public sealed class InvoiceRequest
             DiscountType,
             DiscountAmount,
             GroupReferenceId,
-            Items.Select(item => item.ToCommand()).ToArray());
+            Items.Select(item => item.ToCommand()).ToArray(),
+            Reference);
     }
+}
+
+public sealed class InvoiceRequest : FiscalDocumentRequest;
+
+public sealed class RefundRequest : FiscalDocumentRequest
+{
+    [Required, RegularExpression("^(FULL|PARTIAL)$")]
+    public string RefundType { get; init; } = string.Empty;
+}
+
+public sealed class CancellationRequest
+{
+    [Required, StringLength(100, MinimumLength = 1)]
+    public string InvoiceNumber { get; init; } = string.Empty;
+
+    [Required, StringLength(50, MinimumLength = 1)]
+    public string Reference { get; init; } = string.Empty;
+
+    public DateTimeOffset TransactionDate { get; init; }
+
+    [Range(typeof(decimal), "0.000001", "999999999999999")]
+    public decimal TotalAmount { get; init; }
+
+    public CancellationCommand ToCommand() => new(
+        InvoiceNumber,
+        Reference,
+        TransactionDate,
+        TotalAmount);
 }
 
 public sealed class InvoiceItemRequest
