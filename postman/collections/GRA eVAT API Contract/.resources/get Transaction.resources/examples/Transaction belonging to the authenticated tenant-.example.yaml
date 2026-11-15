@@ -1,0 +1,38 @@
+$kind: http-example
+name: Transaction belonging to the authenticated tenant.
+request:
+  url: "{{baseUrl}}/api/v1/transactions/:transactionId"
+  method: GET
+  headers:
+    - key: X-API-Key
+      value: <API Key>
+      description: "Added as a part of security scheme: apikey"
+    - key: Accept
+      value: application/json
+  pathVariables:
+    - key: transactionId
+      value: 40615893-5fb7-b2e1-835d-8fcbba8d3a00
+      disabled: false
+      description: "(Required) "
+  body:
+    type: text
+    content: ""
+response:
+  statusCode: 200
+  statusText: OK
+  headers:
+    Content-Type: application/json
+  body:
+    type: json
+    content: |-
+      {
+        "transactionId": "34cbc9ab-7828-23e1-b8bd-38006e88f21d",
+        "invoiceNumber": "string",
+        "status": "Submitting",
+        "correlationId": "string",
+        "createdAt": "2008-03-02T11:55:10.450Z",
+        "updatedAt": "2020-04-20T10:11:10.805Z",
+        "externalReference": "string",
+        "errorCode": "string"
+      }
+order: 1000

@@ -1,0 +1,59 @@
+$kind: http-request
+description: ""
+url: "{{baseUrl}}/api/v1/invoices"
+method: POST
+headers:
+  - key: Idempotency-Key
+    value: stringstring
+    disabled: false
+    description: "(Required) "
+  - key: Content-Type
+    value: application/json
+  - key: Accept
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "invoiceNumber": "string",
+      "currency": "USD",
+      "exchangeRate": 6078.241774995578,
+      "calculationType": "EXCLUSIVE",
+      "transactionDate": "1952-11-30",
+      "totalVat": 36.83560062199831,
+      "totalLevy": 5746.131974738091,
+      "totalAmount": 13.435441069304943,
+      "businessPartnerName": "string",
+      "businessPartnerTin": "st",
+      "saleType": "NORMAL",
+      "items": [
+        {
+          "itemCode": "string",
+          "itemCategory": "TRSM",
+          "description": "string",
+          "quantity": 5215.804502791725,
+          "unitPrice": 4571.23733125627,
+          "levyAmountA": 9455.21618006751,
+          "levyAmountB": 457.4894136749208,
+          "levyAmountC": 1428.4362643957138,
+          "levyAmountD": 8254.734915681183,
+          "levyAmountE": 3544.6172300726175,
+          "discountAmount": 0,
+          "exciseAmount": 0,
+          "batchCode": "string",
+          "expireDate": "1997-02-06"
+        }
+      ],
+      "discountType": "GENERAL",
+      "discountAmount": 0,
+      "groupReferenceId": "string"
+    }
+auth:
+  type: apikey
+  credentials:
+    key: X-API-Key
+    value: "{{apiKey}}"
+    in: header
+settings: {}
+examples: ./.resources/submit Invoice.resources/examples
+order: 11000

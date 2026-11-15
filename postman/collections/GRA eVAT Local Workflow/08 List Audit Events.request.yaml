@@ -1,0 +1,18 @@
+$kind: http-request
+method: GET
+url: '{{baseUrl}}/api/v1/audit?limit=50'
+order: 8000
+headers:
+  - { key: X-API-Key, value: '{{tenantApiKey}}' }
+queryParams:
+  - { key: limit, value: '50' }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('Audit query returns HTTP 200', () => pm.response.to.have.status(200));
+      pm.test('Audit events remain tenant-scoped', function () {
+        const events = pm.response.json();
+        pm.expect(events).to.be.an('array').and.not.empty;
+        pm.expect(events.every(event => event.tenantId === pm.collectionVariables.get('tenantId'))).to.be.true;
+      });

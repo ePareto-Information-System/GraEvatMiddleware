@@ -1,0 +1,30 @@
+$kind: http-example
+name: Authentication failed.
+request:
+  url: "{{baseUrl}}/api/v1/admin/tenants/:tenantId/credentials/:credentialId"
+  method: DELETE
+  headers:
+    - key: X-Admin-Key
+      value: <API Key>
+      description: "Added as a part of security scheme: apikey"
+  pathVariables:
+    - key: tenantId
+      value: 40615893-5fb7-b2e1-835d-8fcbba8d3a00
+      disabled: false
+      description: "(Required) "
+    - key: credentialId
+      value: 40615893-5fb7-b2e1-835d-8fcbba8d3a00
+      disabled: false
+      description: "(Required) "
+  body:
+    type: text
+    content: ""
+response:
+  statusCode: 401
+  statusText: Unauthorized
+  headers:
+    Content-Type: text/plain
+  body:
+    type: text
+    content: ""
+order: 2000

@@ -21,6 +21,8 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\GraEvatMiddleware.Domain\GraEvatMiddleware.Domain.csproj" />
     <ProjectReference Include="..\..\src\GraEvatMiddleware.Application\GraEvatMiddleware.Application.csproj" />
+    <ProjectReference Include="..\..\src\GraEvatMiddleware.Infrastructure\GraEvatMiddleware.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\GraEvatMiddleware.GraClient\GraEvatMiddleware.GraClient.csproj" />
   </ItemGroup>
 
 </Project>

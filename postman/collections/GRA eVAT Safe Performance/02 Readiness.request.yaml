@@ -1,0 +1,10 @@
+$kind: http-request
+url: '{{baseUrl}}/api/v1/health/ready'
+method: GET
+auth:
+  type: noauth
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('database readiness is successful', () => pm.response.to.have.status(200));
+order: 2000

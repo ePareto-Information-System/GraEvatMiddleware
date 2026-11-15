@@ -1,0 +1,12 @@
+$kind: http-request
+description: Validate a taxpayer identification number through GRA.
+url: "{{baseUrl}}/api/v1/identifications/tin/:tin"
+method: GET
+pathVariables:
+  - key: tin
+    value: C0034186913
+auth:
+  type: apikey
+  credentials: { key: X-API-Key, value: "{{apiKey}}", in: header }
+settings: {}
+order: 22000

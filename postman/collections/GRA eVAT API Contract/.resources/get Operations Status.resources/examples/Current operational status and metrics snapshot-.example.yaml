@@ -1,0 +1,38 @@
+$kind: http-example
+name: Current operational status and metrics snapshot.
+request:
+  url: "{{baseUrl}}/api/v1/admin/operations/status"
+  method: GET
+  headers:
+    X-Admin-Key: <API Key>
+    Accept: application/json
+  body:
+    type: text
+    content: ""
+response:
+  statusCode: 200
+  statusText: OK
+  headers:
+    Content-Type: application/json
+  body:
+    type: json
+    content: |-
+      {
+        "requests": {
+          "started": 120,
+          "completed": 119,
+          "failed": 1,
+          "rateLimited": 0,
+          "averageDurationMilliseconds": 18.42
+        },
+        "retries": {
+          "scheduled": 2,
+          "processing": 1,
+          "reconciliationPending": 0,
+          "exhausted": 0,
+          "expiredLeases": 0
+        },
+        "pendingTransactions": 2,
+        "timestamp": "2026-11-09T20:30:00Z"
+      }
+order: 1000

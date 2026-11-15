@@ -1,0 +1,23 @@
+$kind: http-request
+description: Submit a grouped statement of account.
+url: "{{baseUrl}}/api/v1/statements-of-account"
+method: POST
+headers:
+  - key: Idempotency-Key
+    value: statement-unique-key-001
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "currency": "GHS", "exchangeRate": 1, "totalVat": 18, "totalAmount": 118, "totalLevies": 0,
+      "businessPartnerName": "Example Partner", "businessPartnerTin": "C0000000001",
+      "groupReferenceId": "STATEMENT-001", "transactionDate": "2026-11-10T12:00:00Z", "calculationType": "INCLUSIVE",
+      "lines": [{ "currency": "GHS", "exchangeRate": 1, "calculationType": "INCLUSIVE", "invoiceNumber": "INV-001", "reference": null, "flag": "INVOICE", "invoiceVat": 18, "invoiceAmount": 118, "invoiceLevies": 0, "transactionDate": "2026-11-09T12:00:00Z" }]
+    }
+auth:
+  type: apikey
+  credentials: { key: X-API-Key, value: "{{apiKey}}", in: header }
+settings: {}
+order: 20000

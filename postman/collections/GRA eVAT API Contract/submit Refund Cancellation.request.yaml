@@ -1,0 +1,30 @@
+$kind: http-request
+description: "Cancel a previously submitted refund."
+url: "{{baseUrl}}/api/v1/refund-cancellations"
+method: POST
+headers:
+  - key: Idempotency-Key
+    value: operation-unique-key
+    disabled: false
+    description: "(Required) Reuse only for the same operation and payload."
+  - key: Content-Type
+    value: application/json
+  - key: Accept
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "invoiceNumber": "REFUND-CANCEL-001",
+      "reference": "ORIGINAL-REFUND-001",
+      "transactionDate": "2026-11-09T12:00:00Z",
+      "totalAmount": 118
+    }
+auth:
+  type: apikey
+  credentials:
+    key: X-API-Key
+    value: "{{apiKey}}"
+    in: header
+settings: {}
+order: 17000

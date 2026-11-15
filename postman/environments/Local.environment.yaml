@@ -1,0 +1,10 @@
+name: Local
+values:
+  - key: baseUrl
+    value: 'http://localhost:5189'
+    enabled: true
+    type: default
+  - key: adminKey
+    value: ''
+    enabled: true
+    type: secret

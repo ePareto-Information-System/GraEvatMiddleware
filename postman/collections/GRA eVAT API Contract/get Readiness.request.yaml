@@ -1,0 +1,9 @@
+$kind: http-request
+description: Checks PostgreSQL and, when enabled, the configured GRA health operation using an active tenant.
+url: "{{baseUrl}}/api/v1/health/ready"
+method: GET
+headers:
+  Accept: application/json
+settings: {}
+examples: ./.resources/get Readiness.resources/examples
+order: 2000

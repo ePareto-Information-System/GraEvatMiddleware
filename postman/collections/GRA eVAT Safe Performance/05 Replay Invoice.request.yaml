@@ -1,0 +1,39 @@
+$kind: http-request
+url: '{{baseUrl}}/api/v1/invoices'
+method: POST
+headers:
+  - key: Idempotency-Key
+    value: '{{replayIdempotencyKey}}'
+  - key: Content-Type
+    value: application/json
+auth:
+  type: apikey
+  credentials:
+    - key: key
+      value: X-API-Key
+    - key: value
+      value: '{{apiKey}}'
+    - key: in
+      value: header
+body:
+  type: json
+  content: |-
+    {
+      "invoiceNumber": "{{replayInvoiceNumber}}",
+      "currency": "GHS", "exchangeRate": 1, "calculationType": "INCLUSIVE",
+      "transactionDate": "2026-11-10", "totalVat": 0, "totalLevy": 0, "totalAmount": 10,
+      "businessPartnerName": "Performance Test Partner", "businessPartnerTin": "C0000000001",
+      "saleType": "NORMAL", "discountType": null, "discountAmount": 0,
+      "groupReferenceId": null, "reference": null,
+      "items": [{
+        "itemCode": "PERF-ITEM", "itemCategory": "", "description": "Safe replay item",
+        "quantity": 1, "unitPrice": 10, "levyAmountA": 0, "levyAmountB": 0,
+        "levyAmountC": 0, "levyAmountD": 0, "levyAmountE": 0,
+        "discountAmount": 0, "exciseAmount": 0, "batchCode": null, "expireDate": null
+      }]
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('invoice is an idempotent replay', () => pm.response.to.have.status(200));
+order: 5000

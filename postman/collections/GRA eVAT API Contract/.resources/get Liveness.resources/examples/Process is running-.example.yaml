@@ -1,0 +1,23 @@
+$kind: http-example
+name: Process is running.
+request:
+  url: "{{baseUrl}}/api/v1/health/live"
+  method: GET
+  headers:
+    Accept: application/json
+  body:
+    type: text
+    content: ""
+response:
+  statusCode: 200
+  statusText: OK
+  headers:
+    Content-Type: application/json
+  body:
+    type: json
+    content: |-
+      {
+        "status": "healthy",
+        "timestamp": "1947-11-02T19:03:23.021Z"
+      }
+order: 1000

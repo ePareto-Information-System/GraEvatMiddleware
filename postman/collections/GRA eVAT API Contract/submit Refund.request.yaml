@@ -1,0 +1,60 @@
+$kind: http-request
+description: "Submit a full or partial refund against an original GRA invoice reference."
+url: "{{baseUrl}}/api/v1/refunds"
+method: POST
+headers:
+  - key: Idempotency-Key
+    value: operation-unique-key
+    disabled: false
+    description: "(Required) Reuse only for the same operation and payload."
+  - key: Content-Type
+    value: application/json
+  - key: Accept
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "invoiceNumber": "DOC-001",
+      "currency": "GHS",
+      "exchangeRate": 1,
+      "calculationType": "INCLUSIVE",
+      "transactionDate": "2026-11-09",
+      "totalVat": 18,
+      "totalLevy": 0,
+      "totalAmount": 118,
+      "businessPartnerName": "Example Partner",
+      "businessPartnerTin": "C0000000001",
+      "saleType": "NORMAL",
+      "discountType": null,
+      "discountAmount": 0,
+      "groupReferenceId": null,
+      "reference": "ORIGINAL-INVOICE-001",
+      "refundType": "PARTIAL",
+      "items": [
+        {
+          "itemCode": "ITEM-001",
+          "itemCategory": "",
+          "description": "Example item",
+          "quantity": 1,
+          "unitPrice": 118,
+          "levyAmountA": 0,
+          "levyAmountB": 0,
+          "levyAmountC": 0,
+          "levyAmountD": 0,
+          "levyAmountE": 0,
+          "discountAmount": 0,
+          "exciseAmount": 0,
+          "batchCode": null,
+          "expireDate": null
+        }
+      ]
+    }
+auth:
+  type: apikey
+  credentials:
+    key: X-API-Key
+    value: "{{apiKey}}"
+    in: header
+settings: {}
+order: 14000

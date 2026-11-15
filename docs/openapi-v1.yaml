@@ -1,0 +1,672 @@
+openapi: 3.1.0
+info:
+  title: GRA eVAT Middleware API
+  version: 1.0.0
+  description: Canonical multi-tenant API used by Odoo and other ERP clients.
+paths:
+  /api/v1/health/live:
+    get:
+      operationId: getLiveness
+      responses:
+        '200':
+          description: Process is running.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HealthResponse' }
+  /api/v1/health/ready:
+    get:
+      operationId: getReadiness
+      description: Checks PostgreSQL and, when enabled, the configured GRA health operation using an active tenant.
+      responses:
+        '200':
+          description: Required dependencies are ready. GRA may be intentionally disabled.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReadinessResponse' }
+        '503':
+          description: PostgreSQL is unavailable or enabled GRA integration is not ready.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReadinessResponse' }
+  /api/v1/admin/operations/status:
+    get:
+      operationId: getOperationsStatus
+      description: Returns aggregate runtime and retry-queue signals without tenant payloads or credentials.
+      security: [{ AdminKey: [] }]
+      responses:
+        '200':
+          description: Current operational status and metrics snapshot.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OperationalStatus' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/v1/admin/tenants:
+    post:
+      operationId: registerTenant
+      security: [{ AdminKey: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterTenantRequest' }
+      responses:
+        '201':
+          description: Tenant and initial API credential created. The API key is returned once.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RegisterTenantResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/admin/tenants/{tenantId}/credentials:
+    post:
+      operationId: issueTenantCredential
+      security: [{ AdminKey: [] }]
+      parameters: [{ $ref: '#/components/parameters/TenantId' }]
+      responses:
+        '201':
+          description: Credential created. The API key is returned once.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IssuedCredential' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/admin/tenants/{tenantId}/credentials/{credentialId}:
+    delete:
+      operationId: revokeTenantCredential
+      security: [{ AdminKey: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/TenantId' }
+        - name: credentialId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204': { description: Credential revoked. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/admin/tenants/{tenantId}/credentials/{credentialId}/rotate:
+    post:
+      operationId: rotateTenantCredential
+      security: [{ AdminKey: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/TenantId' }
+        - name: credentialId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '201':
+          description: Existing credential revoked and replacement returned once.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IssuedCredential' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/admin/tenants/{tenantId}/activate:
+    post:
+      operationId: activateTenant
+      security: [{ AdminKey: [] }]
+      parameters: [{ $ref: '#/components/parameters/TenantId' }]
+      responses:
+        '204': { description: Tenant activated. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/admin/tenants/{tenantId}/suspend:
+    post:
+      operationId: suspendTenant
+      security: [{ AdminKey: [] }]
+      parameters: [{ $ref: '#/components/parameters/TenantId' }]
+      responses:
+        '204': { description: Tenant suspended. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/admin/tenants/{tenantId}/terminate:
+    post:
+      operationId: terminateTenant
+      security: [{ AdminKey: [] }]
+      parameters: [{ $ref: '#/components/parameters/TenantId' }]
+      responses:
+        '204': { description: Tenant terminated and active credentials revoked. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/admin/tenants/{tenantId}/configuration:
+    put:
+      operationId: updateTenantConfiguration
+      security: [{ AdminKey: [] }]
+      parameters: [{ $ref: '#/components/parameters/TenantId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateTenantConfigurationRequest' }
+      responses:
+        '204': { description: Tenant GRA configuration updated. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/invoices:
+    post:
+      operationId: submitInvoice
+      security: [{ TenantApiKey: [] }]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InvoiceRequest' }
+      responses:
+        '200':
+          description: Existing transaction returned for an idempotent replay.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TransactionResponse' }
+        '201':
+          description: Invoice transaction created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TransactionResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/refunds:
+    post:
+      operationId: submitRefund
+      description: Submits a full or partial refund against an existing GRA invoice reference.
+      security: [{ TenantApiKey: [] }]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RefundRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/IdempotentReplay' }
+        '201': { $ref: '#/components/responses/TransactionCreated' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/purchases:
+    post:
+      operationId: submitPurchase
+      security: [{ TenantApiKey: [] }]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InvoiceRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/IdempotentReplay' }
+        '201': { $ref: '#/components/responses/TransactionCreated' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/purchase-returns:
+    post:
+      operationId: submitPurchaseReturn
+      description: Submits a purchase return; reference identifies the original purchase.
+      security: [{ TenantApiKey: [] }]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReferencedDocumentRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/IdempotentReplay' }
+        '201': { $ref: '#/components/responses/TransactionCreated' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/refund-cancellations:
+    post:
+      operationId: submitRefundCancellation
+      security: [{ TenantApiKey: [] }]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CancellationRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/IdempotentReplay' }
+        '201': { $ref: '#/components/responses/TransactionCreated' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/purchase-return-cancellations:
+    post:
+      operationId: submitPurchaseReturnCancellation
+      security: [{ TenantApiKey: [] }]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CancellationRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/IdempotentReplay' }
+        '201': { $ref: '#/components/responses/TransactionCreated' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/credit-debit-notes:
+    post:
+      operationId: submitCreditDebitNote
+      description: Submits a credit or debit note against one or more invoice or purchase documents.
+      security: [{ TenantApiKey: [] }]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreditDebitNoteRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/OperationReplay' }
+        '201': { $ref: '#/components/responses/OperationCreated' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/statements-of-account:
+    post:
+      operationId: submitStatementOfAccount
+      security: [{ TenantApiKey: [] }]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StatementOfAccountRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/OperationReplay' }
+        '201': { $ref: '#/components/responses/OperationCreated' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/inventory:
+    post:
+      operationId: submitInventory
+      security: [{ TenantApiKey: [] }]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InventorySubmissionRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/OperationReplay' }
+        '201': { $ref: '#/components/responses/OperationCreated' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/identifications/tin/{tin}:
+    get:
+      operationId: validateTin
+      security: [{ TenantApiKey: [] }]
+      parameters:
+        - name: tin
+          in: path
+          required: true
+          schema: { type: string, minLength: 3, maxLength: 64 }
+      responses:
+        '200':
+          description: Normalized GRA identification result.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IdentificationResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/identifications/ghana-card/{nationalId}:
+    get:
+      operationId: validateGhanaCard
+      security: [{ TenantApiKey: [] }]
+      parameters:
+        - name: nationalId
+          in: path
+          required: true
+          schema: { type: string, minLength: 3, maxLength: 64 }
+      responses:
+        '200':
+          description: Normalized GRA identification result.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IdentificationResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/transactions/{transactionId}:
+    get:
+      operationId: getTransaction
+      security: [{ TenantApiKey: [] }]
+      parameters:
+        - name: transactionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Transaction belonging to the authenticated tenant.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TransactionResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/audit:
+    get:
+      operationId: listTenantAuditEvents
+      security: [{ TenantApiKey: [] }]
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+      responses:
+        '200':
+          description: Newest audit events belonging to the authenticated tenant.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/AuditEvent' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+components:
+  securitySchemes:
+    AdminKey: { type: apiKey, in: header, name: X-Admin-Key }
+    TenantApiKey: { type: apiKey, in: header, name: X-API-Key }
+  parameters:
+    TenantId:
+      name: tenantId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: { type: string, minLength: 8, maxLength: 128 }
+  responses:
+    Unauthorized: { description: Authentication failed. }
+    NotFound: { description: Resource was not found for the authenticated boundary. }
+    Conflict: { description: Resource or idempotency conflict. }
+    ValidationError: { description: Canonical request validation failed. }
+    TooManyRequests: { description: Configured request rate limit exceeded. }
+    IdempotentReplay:
+      description: Existing transaction returned for an idempotent replay.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/TransactionResponse' }
+    TransactionCreated:
+      description: Fiscal transaction created.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/TransactionResponse' }
+    OperationReplay:
+      description: Existing operation transaction returned for an idempotent replay.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/OperationTransactionResponse' }
+    OperationCreated:
+      description: GRA operation transaction created.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/OperationTransactionResponse' }
+  schemas:
+    HealthResponse:
+      type: object
+      required: [status, timestamp]
+      properties:
+        status: { type: string, example: healthy }
+        timestamp: { type: string, format: date-time }
+    ReadinessResponse:
+      type: object
+      required: [status, database, gra, timestamp]
+      properties:
+        status: { type: string, enum: [ready, not_ready] }
+        database: { type: string, enum: [healthy, unavailable] }
+        gra: { type: string, enum: [disabled, healthy, unavailable, not_configured, not_checked] }
+        graErrorCode: { type: [string, 'null'] }
+        timestamp: { type: string, format: date-time }
+    OperationalStatus:
+      type: object
+      required: [requests, retries, pendingTransactions, timestamp]
+      properties:
+        requests: { $ref: '#/components/schemas/RequestMetrics' }
+        retries: { $ref: '#/components/schemas/RetryMetrics' }
+        pendingTransactions: { type: integer, minimum: 0 }
+        timestamp: { type: string, format: date-time }
+    RequestMetrics:
+      type: object
+      required: [started, completed, failed, rateLimited, averageDurationMilliseconds]
+      properties:
+        started: { type: integer, format: int64, minimum: 0 }
+        completed: { type: integer, format: int64, minimum: 0 }
+        failed: { type: integer, format: int64, minimum: 0 }
+        rateLimited: { type: integer, format: int64, minimum: 0 }
+        averageDurationMilliseconds: { type: number, minimum: 0 }
+    RetryMetrics:
+      type: object
+      required: [scheduled, processing, reconciliationPending, exhausted, expiredLeases]
+      properties:
+        scheduled: { type: integer, minimum: 0 }
+        processing: { type: integer, minimum: 0 }
+        reconciliationPending: { type: integer, minimum: 0 }
+        exhausted: { type: integer, minimum: 0 }
+        expiredLeases: { type: integer, minimum: 0 }
+    RegisterTenantRequest:
+      type: object
+      required: [name, slug, taxpayerReference, graSecurityKeySecretName]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 200 }
+        slug: { type: string, pattern: '^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$' }
+        taxpayerReference: { type: string, minLength: 3, maxLength: 64 }
+        graSecurityKeySecretName: { type: string, minLength: 1, maxLength: 200 }
+    RegisterTenantResponse:
+      type: object
+      required: [tenantId, name, slug, status, credential]
+      properties:
+        tenantId: { type: string, format: uuid }
+        name: { type: string }
+        slug: { type: string }
+        status: { type: string }
+        credential: { $ref: '#/components/schemas/IssuedCredential' }
+    UpdateTenantConfigurationRequest:
+      type: object
+      required: [taxpayerReference, graSecurityKeySecretName]
+      properties:
+        taxpayerReference: { type: string, minLength: 3, maxLength: 64 }
+        graSecurityKeySecretName: { type: string, minLength: 1, maxLength: 200 }
+    IssuedCredential:
+      type: object
+      required: [credentialId, apiKey, keyPrefix, createdAt]
+      properties:
+        credentialId: { type: string, format: uuid }
+        apiKey: { type: string, description: Returned once and never persisted in plaintext. }
+        keyPrefix: { type: string }
+        createdAt: { type: string, format: date-time }
+    InvoiceRequest:
+      type: object
+      required: [invoiceNumber, currency, exchangeRate, calculationType, transactionDate, totalVat, totalLevy, totalAmount, businessPartnerName, businessPartnerTin, saleType, items]
+      properties:
+        invoiceNumber: { type: string, minLength: 1, maxLength: 100 }
+        currency: { type: string, enum: [GHS, USD, EUR, GBP] }
+        exchangeRate: { type: number, exclusiveMinimum: 0 }
+        calculationType: { type: string, enum: [INCLUSIVE, EXCLUSIVE] }
+        transactionDate: { type: string, format: date }
+        totalVat: { type: number, minimum: 0 }
+        totalLevy: { type: number, minimum: 0 }
+        totalAmount: { type: number, minimum: 0 }
+        businessPartnerName: { type: string, minLength: 1, maxLength: 100 }
+        businessPartnerTin: { type: string, minLength: 1, maxLength: 15 }
+        saleType: { type: string, enum: [NORMAL, EXPORT] }
+        discountType: { type: [string, 'null'], enum: [GENERAL, SELECTIVE, null] }
+        discountAmount: { type: number, minimum: 0, default: 0 }
+        groupReferenceId: { type: [string, 'null'], maxLength: 50 }
+        reference: { type: [string, 'null'], maxLength: 50, description: Original GRA document reference when required by the operation. }
+        items:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/InvoiceItem' }
+    ReferencedDocumentRequest:
+      allOf:
+        - { $ref: '#/components/schemas/InvoiceRequest' }
+        - type: object
+          required: [reference]
+          properties:
+            reference: { type: string, minLength: 1, maxLength: 50 }
+    RefundRequest:
+      allOf:
+        - { $ref: '#/components/schemas/ReferencedDocumentRequest' }
+        - type: object
+          required: [refundType]
+          properties:
+            refundType: { type: string, enum: [FULL, PARTIAL] }
+    CancellationRequest:
+      type: object
+      required: [invoiceNumber, reference, transactionDate, totalAmount]
+      properties:
+        invoiceNumber: { type: string, minLength: 1, maxLength: 100 }
+        reference: { type: string, minLength: 1, maxLength: 50 }
+        transactionDate: { type: string, format: date-time }
+        totalAmount: { type: number, exclusiveMinimum: 0 }
+    InvoiceItem:
+      type: object
+      required: [itemCode, itemCategory, description, quantity, unitPrice, levyAmountA, levyAmountB, levyAmountC, levyAmountD, levyAmountE]
+      properties:
+        itemCode: { type: string, minLength: 1, maxLength: 50 }
+        itemCategory: { type: string, maxLength: 50, enum: ['', CST, TRSM, EXM, RNT, EXC_PLASTIC] }
+        description: { type: string, minLength: 1, maxLength: 100 }
+        quantity: { type: number, exclusiveMinimum: 0 }
+        unitPrice: { type: number, minimum: 0 }
+        levyAmountA: { type: number, minimum: 0 }
+        levyAmountB: { type: number, minimum: 0 }
+        levyAmountC: { type: number, minimum: 0 }
+        levyAmountD: { type: number, minimum: 0 }
+        levyAmountE: { type: number, minimum: 0 }
+        discountAmount: { type: number, minimum: 0, default: 0 }
+        exciseAmount: { type: number, minimum: 0, default: 0 }
+        batchCode: { type: [string, 'null'], maxLength: 100 }
+        expireDate: { type: [string, 'null'], format: date }
+    CreditDebitNoteRequest:
+      type: object
+      required: [noteNumber, noteType, currency, exchangeRate, noteAmount, calculationType, businessPartnerName, businessPartnerTin, groupReferenceId, transactionDate, noteLineType, noteLines]
+      properties:
+        noteNumber: { type: string, minLength: 1, maxLength: 100 }
+        noteType: { type: string, enum: [CREDIT, DEBIT] }
+        currency: { type: string, minLength: 3, maxLength: 10 }
+        exchangeRate: { type: number, exclusiveMinimum: 0 }
+        noteAmount: { type: number, exclusiveMinimum: 0 }
+        calculationType: { type: string, enum: [INCLUSIVE, EXCLUSIVE] }
+        businessPartnerName: { type: string, minLength: 1, maxLength: 200 }
+        businessPartnerTin: { type: string, minLength: 1, maxLength: 20 }
+        groupReferenceId: { type: string, minLength: 1, maxLength: 100 }
+        transactionDate: { type: string, format: date }
+        remarks: { type: [string, 'null'], maxLength: 500 }
+        noteLineType: { type: string, enum: [INVOICE, PURCHASE] }
+        noteLines:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/CreditDebitNoteLine' }
+    CreditDebitNoteLine:
+      type: object
+      required: [invoiceNumber, invoiceDate, invoiceAmount]
+      properties:
+        invoiceNumber: { type: string, minLength: 1, maxLength: 100 }
+        invoiceDate: { type: string, format: date }
+        invoiceAmount: { type: number, exclusiveMinimum: 0 }
+    StatementOfAccountRequest:
+      type: object
+      required: [currency, exchangeRate, totalVat, totalAmount, totalLevies, businessPartnerName, businessPartnerTin, groupReferenceId, transactionDate, calculationType, lines]
+      properties:
+        currency: { type: string, minLength: 3, maxLength: 10 }
+        exchangeRate: { type: number, exclusiveMinimum: 0 }
+        totalVat: { type: number, minimum: 0 }
+        totalAmount: { type: number, minimum: 0 }
+        totalLevies: { type: number, minimum: 0 }
+        businessPartnerName: { type: string, minLength: 1, maxLength: 200 }
+        businessPartnerTin: { type: string, minLength: 1, maxLength: 20 }
+        groupReferenceId: { type: string, minLength: 1, maxLength: 100 }
+        transactionDate: { type: string, format: date-time }
+        calculationType: { type: string, enum: [INCLUSIVE, EXCLUSIVE] }
+        lines:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/StatementLine' }
+    StatementLine:
+      type: object
+      required: [currency, exchangeRate, calculationType, invoiceNumber, flag, invoiceVat, invoiceAmount, invoiceLevies, transactionDate]
+      properties:
+        currency: { type: string, minLength: 3, maxLength: 10 }
+        exchangeRate: { type: number, exclusiveMinimum: 0 }
+        calculationType: { type: string, enum: [INCLUSIVE, EXCLUSIVE] }
+        invoiceNumber: { type: string, minLength: 1, maxLength: 100 }
+        reference: { type: [string, 'null'], maxLength: 100 }
+        flag: { type: string, enum: [INVOICE, REFUND, PARTIAL_REFUND, CREDIT_NOTE, DEBIT_NOTE, REFUND_CANCELATION] }
+        invoiceVat: { type: number, minimum: 0 }
+        invoiceAmount: { type: number, minimum: 0 }
+        invoiceLevies: { type: number, minimum: 0 }
+        transactionDate: { type: string, format: date-time }
+    InventorySubmissionRequest:
+      type: object
+      required: [inventoryDate, inventories]
+      properties:
+        inventoryDate: { type: string, format: date }
+        inventories:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/InventoryItem' }
+    InventoryItem:
+      type: object
+      required: [code, description, quantity, unitPrice]
+      properties:
+        code: { type: string, minLength: 1, maxLength: 100 }
+        description: { type: string, minLength: 1, maxLength: 250 }
+        quantity: { type: number, minimum: 0 }
+        batchCode: { type: [string, 'null'], maxLength: 100 }
+        unitPrice: { type: number, minimum: 0 }
+        expiryDate: { type: [string, 'null'], format: date }
+    OperationTransactionResponse:
+      type: object
+      required: [transactionId, documentNumber, status, correlationId, createdAt, updatedAt]
+      properties:
+        transactionId: { type: string, format: uuid }
+        documentNumber: { type: string }
+        status: { type: string, enum: [Received, Validating, Submitting, PendingGra, Succeeded, Rejected, TemporaryFailure, PermanentFailure] }
+        externalReference: { type: [string, 'null'] }
+        errorCode: { type: [string, 'null'] }
+        correlationId: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    IdentificationResponse:
+      type: object
+      required: [isValid]
+      properties:
+        isValid: { type: boolean }
+        tin: { type: [string, 'null'] }
+        type: { type: [string, 'null'] }
+        name: { type: [string, 'null'] }
+        sector: { type: [string, 'null'] }
+        address: { type: [string, 'null'] }
+        errorCode: { type: [string, 'null'] }
+    TransactionResponse:
+      type: object
+      required: [transactionId, invoiceNumber, status, correlationId, createdAt, updatedAt]
+      properties:
+        transactionId: { type: string, format: uuid }
+        invoiceNumber: { type: string }
+        status: { type: string, enum: [Received, Validating, Submitting, PendingGra, Succeeded, Rejected, TemporaryFailure, PermanentFailure] }
+        externalReference: { type: [string, 'null'] }
+        errorCode: { type: [string, 'null'] }
+        correlationId: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    AuditEvent:
+      type: object
+      required: [id, tenantId, action, resourceType, resourceId, correlationId, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        tenantId: { type: string, format: uuid }
+        action: { type: string }
+        resourceType: { type: string }
+        resourceId: { type: string }
+        correlationId: { type: string }
+        createdAt: { type: string, format: date-time }

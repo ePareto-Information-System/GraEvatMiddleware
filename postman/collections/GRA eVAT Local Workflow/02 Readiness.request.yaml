@@ -1,0 +1,15 @@
+$kind: http-request
+method: GET
+url: '{{baseUrl}}/api/v1/health/ready'
+order: 2000
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('Readiness returns HTTP 200', () => pm.response.to.have.status(200));
+      pm.test('PostgreSQL is healthy and GRA is disabled', function () {
+        const body = pm.response.json();
+        pm.expect(body.status).to.eql('ready');
+        pm.expect(body.database).to.eql('healthy');
+        pm.expect(body.gra).to.eql('disabled');
+      });

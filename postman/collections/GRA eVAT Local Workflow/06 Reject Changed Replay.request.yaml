@@ -1,0 +1,18 @@
+$kind: http-request
+method: POST
+url: '{{baseUrl}}/api/v1/invoices'
+order: 6000
+headers:
+  - { key: X-API-Key, value: '{{tenantApiKey}}' }
+  - { key: Idempotency-Key, value: '{{idempotencyKey}}' }
+  - { key: Content-Type, value: application/json }
+body:
+  type: json
+  content: |-
+    {"invoiceNumber":"{{invoiceNumber}}","currency":"GHS","exchangeRate":1,"calculationType":"INCLUSIVE","transactionDate":"2026-11-09","totalVat":18,"totalLevy":0,"totalAmount":119,"businessPartnerName":"Postman Test Customer","businessPartnerTin":"C0000000001","saleType":"NORMAL","discountAmount":0,"items":[{"itemCode":"PM-ITEM-001","itemCategory":"","description":"Postman local workflow item","quantity":1,"unitPrice":100,"levyAmountA":0,"levyAmountB":0,"levyAmountC":0,"levyAmountD":0,"levyAmountE":0,"discountAmount":0,"exciseAmount":0}]}
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('Changed replay is rejected with HTTP 409', () => pm.response.to.have.status(409));
+      pm.test('Conflict has a stable code', () => pm.expect(pm.response.json().code).to.eql('IDEMPOTENCY_CONFLICT'));

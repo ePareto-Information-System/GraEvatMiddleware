@@ -1,0 +1,24 @@
+$kind: http-request
+method: POST
+url: '{{baseUrl}}/api/v1/invoices'
+order: 4000
+headers:
+  - { key: X-API-Key, value: '{{tenantApiKey}}' }
+  - { key: Idempotency-Key, value: '{{idempotencyKey}}' }
+  - { key: Content-Type, value: application/json }
+body:
+  type: json
+  content: |-
+    {"invoiceNumber":"{{invoiceNumber}}","currency":"GHS","exchangeRate":1,"calculationType":"INCLUSIVE","transactionDate":"2026-11-09","totalVat":18,"totalLevy":0,"totalAmount":118,"businessPartnerName":"Postman Test Customer","businessPartnerTin":"C0000000001","saleType":"NORMAL","discountAmount":0,"items":[{"itemCode":"PM-ITEM-001","itemCategory":"","description":"Postman local workflow item","quantity":1,"unitPrice":100,"levyAmountA":0,"levyAmountB":0,"levyAmountC":0,"levyAmountD":0,"levyAmountE":0,"discountAmount":0,"exciseAmount":0}]}
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('First invoice submission returns HTTP 201', () => pm.response.to.have.status(201));
+      const body = pm.response.json();
+      pm.test('Invoice is saved while GRA remains disabled', function () {
+        pm.expect(body.transactionId).to.be.a('string').and.not.empty;
+        pm.expect(body.status).to.eql('PendingGra');
+        pm.expect(body.errorCode).to.eql('GRA_INTEGRATION_DISABLED');
+      });
+      pm.collectionVariables.set('transactionId', body.transactionId);

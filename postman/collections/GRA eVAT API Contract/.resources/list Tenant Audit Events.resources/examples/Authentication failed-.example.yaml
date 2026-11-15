@@ -1,0 +1,23 @@
+$kind: http-example
+name: Authentication failed.
+request:
+  url: "{{baseUrl}}/api/v1/audit?limit=50"
+  method: GET
+  headers:
+    - key: X-API-Key
+      value: <API Key>
+      description: "Added as a part of security scheme: apikey"
+  queryParams:
+    limit: "50"
+  body:
+    type: text
+    content: ""
+response:
+  statusCode: 401
+  statusText: Unauthorized
+  headers:
+    Content-Type: text/plain
+  body:
+    type: text
+    content: ""
+order: 2000

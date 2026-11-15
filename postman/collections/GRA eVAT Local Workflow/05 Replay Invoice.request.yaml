@@ -1,0 +1,18 @@
+$kind: http-request
+method: POST
+url: '{{baseUrl}}/api/v1/invoices'
+order: 5000
+headers:
+  - { key: X-API-Key, value: '{{tenantApiKey}}' }
+  - { key: Idempotency-Key, value: '{{idempotencyKey}}' }
+  - { key: Content-Type, value: application/json }
+body:
+  type: json
+  content: |-
+    {"invoiceNumber":"{{invoiceNumber}}","currency":"GHS","exchangeRate":1,"calculationType":"INCLUSIVE","transactionDate":"2026-11-09","totalVat":18,"totalLevy":0,"totalAmount":118,"businessPartnerName":"Postman Test Customer","businessPartnerTin":"C0000000001","saleType":"NORMAL","discountAmount":0,"items":[{"itemCode":"PM-ITEM-001","itemCategory":"","description":"Postman local workflow item","quantity":1,"unitPrice":100,"levyAmountA":0,"levyAmountB":0,"levyAmountC":0,"levyAmountD":0,"levyAmountE":0,"discountAmount":0,"exciseAmount":0}]}
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('Identical replay returns HTTP 200', () => pm.response.to.have.status(200));
+      pm.test('Replay returns the original transaction', () => pm.expect(pm.response.json().transactionId).to.eql(pm.collectionVariables.get('transactionId')));
