@@ -8,6 +8,7 @@ using GraEvatMiddleware.Api.OpenApi;
 using GraEvatMiddleware.GraClient;
 using GraEvatMiddleware.Infrastructure;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.OpenApi;
 
@@ -74,6 +75,10 @@ builder.Services
         TenantApiKeyAuthenticationHandler.SchemeName,
         _ => { });
 builder.Services.AddAuthorization();
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+});
 builder.Services.Configure<RateLimitingOptions>(
     builder.Configuration.GetSection(RateLimitingOptions.SectionName));
 builder.Services.AddRateLimiter(options =>
@@ -123,6 +128,8 @@ builder.Services.AddRateLimiter(options =>
 });
 
 var app = builder.Build();
+
+app.UseForwardedHeaders();
 
 if (app.Environment.IsDevelopment() || app.Environment.IsEnvironment("Testing"))
 {
